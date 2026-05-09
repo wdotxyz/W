@@ -1,0 +1,34 @@
+{
+  "summary": "First-iteration full review of Wave (WhatsApp clone). Backend: 16/16 pytest tests PASSED including auth (send-otp, verify-otp, /me, profile), users list, 1-on-1 idempotent chat, group chat, list chats with display_name/last_message/unread, send/get text+image+voice messages, 404 on unauthorized chat access, AI start-chat (idempotent), AI Claude reply within ~7s using EMERGENT_LLM_KEY, and WebSocket /api/ws delivering new_message + typing broadcasts. No '_id' present in any MongoDB-derived response. Frontend (mobile 390x844): Welcome screen renders with Wave branding/wave illustration/three feature rows + Get started; Phone screen accepts +1 country code + phone, posts OTP and navigates to OTP; OTP screen shows 'Dev OTP: <code>' banner with Autofill; Autofill+Verify proceed to Profile setup screen for new users. Profile-setup, Chats AI list, AI message UI reply, and Settings sign-out flows could not be fully reached in a single Playwright run because Verify/Continue/Send/Settings tab buttons (Pressable) lack stable testIDs (selector flaky across runs). Backend evidence + partial UI evidence indicates the flow is functional end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console warnings: 'shadow*' style props deprecated (use boxShadow); props.pointerEvents deprecated (use style.pointerEvents); Image style.resizeMode deprecated (use props.resizeMode). Cosmetic only."]}
+    ],
+    "react_native_issues": [
+      {"component": "Pressable buttons (Verify / Continue / Send / Tab bar / Sign out / Wave AI row / new-chat / new-group)", "issue": "Missing testID props. This made automated UI testing flaky (had to fall back to text matching which collided with other 'verify'/'Continue' substrings). Add testIDs: get-started-btn, phone-input, send-otp-btn, otp-input, autofill-btn, verify-otp-btn, name-input, profile-continue-btn, tab-chats, tab-calls, tab-settings, new-chat-btn, new-group-btn, chat-row-{id}, message-input, send-msg-btn, sign-out-btn."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_wave_backend.py", "/app/test_reports/pytest/wave_results.xml"],
+  "action_items": [
+    "Add testID props to all interactive elements (list above) so automated UI E2E can run reliably.",
+    "Optional: align expo package versions (expo-audio 1.1.1, expo-file-system 19.0.22, expo-image-picker 17.0.11, @react-native-async-storage/async-storage 2.2.0) per Expo SDK 54 expectations to avoid runtime warnings.",
+    "Optional: replace deprecated style props (shadow*, pointerEvents prop, Image style.resizeMode) to silence warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py is single-file but well-scoped (~440 lines) — acceptable for MVP; consider splitting if it grows beyond ~700 lines.",
+    "JWT_SECRET default 'wave-secret' — currently overridden by .env (good).",
+    "All Mongo queries correctly project {'_id': 0} or pop _id — verified by tests.",
+    "WS endpoint registered on app (not api_router) at path '/api/ws' — works correctly through ingress.",
+    "AI reply built with prior-message context but it does not strip the user's just-sent message from prior list before appending it explicitly; minor but causes the latest user message to appear twice in prompt context — non-blocking."
+  ],
+  "updated_files": ["/app/backend/tests/test_wave_backend.py (new)"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "~60% (welcome/phone/OTP/profile-setup screens verified rendering & navigation; chat-list, AI-chat UI message round-trip, and settings sign-out NOT verified via UI in this run due to missing testIDs)"},
+  "seed_data_creation": "Created several disposable test users (+1555*, +1666*, +1777*) via /api/auth/verify-otp and one TEST_Group chat; can be cleaned up by dropping wave_chat.users / chats / messages collections if needed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend is solid — re-run /app/backend/tests/test_wave_backend.py for regression. For UI, after main agent adds testIDs, write Playwright targeting [data-testid=...]; mobile viewport 390x844; goto with wait_until='domcontentloaded' (networkidle never settles due to Metro WS); first screen wait ~8s. Use any +1555xxxxxxx phone, then Autofill→Verify→fill name→Continue→tap 'Wave AI'→type→send→wait ~12s for Claude reply.",
+  "rca_of_issue": "N/A — no functional bugs found. Only test-automation friction due to missing testIDs."
+}
