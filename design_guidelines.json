@@ -1,0 +1,111 @@
+{
+  "theme_archetype": "Archetype 1: Organic & Earthy (Light Theme - Oceanic Wave Style)",
+  "brand": {
+    "name": "Wave",
+    "description": "A premium, AI-native WhatsApp clone featuring a calming ocean-inspired aesthetic, thumb-centric gestures, and a built-in AI assistant."
+  },
+  "colors": {
+    "primary": "#0B3B60",
+    "primary_light": "#1B6194",
+    "accent": "#0A7A90",
+    "accent_glow": "#00B4D8",
+    "surface": "#FFFFFF",
+    "surface_secondary": "#F0F4F8",
+    "text_main": "#06152B",
+    "text_muted": "#5B7083",
+    "border": "#E2E8F0",
+    "ai_gradient": ["#00B4D8", "#0A7A90"],
+    "chat_bubble_sent": "#E8F5F7",
+    "chat_bubble_received": "#FFFFFF",
+    "danger": "#FF3B30",
+    "success": "#34C759"
+  },
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Manrope",
+    "scales": {
+      "h1": "text-4xl tracking-tight font-bold",
+      "h2": "text-3xl tracking-tight font-semibold",
+      "h3": "text-xl tracking-tight font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm leading-normal",
+      "tiny_label": "text-xs tracking-wider uppercase font-bold"
+    }
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-6",
+    "gap_standard": "gap-4",
+    "border_radius": {
+      "small": "rounded-lg",
+      "medium": "rounded-xl",
+      "large": "rounded-2xl",
+      "pill": "rounded-full"
+    },
+    "thumb_friendly_design": true,
+    "bottom_sheet_radius": "rounded-t-3xl"
+  },
+  "components_instructions": {
+    "onboarding_screens": {
+      "layout": "Minimalist bento-style forms with generous top spacing. Large 'Wave' branding in deep navy.",
+      "inputs": "Solid #F0F4F8 backgrounds, no borders, soft inner padding (p-4). Large text for phone numbers to improve touch accuracy."
+    },
+    "chat_list": {
+      "item_layout": "Row flex, large avatar (56x56), name and last message stacked. Right aligned timestamp and unread badge.",
+      "unread_badge": "Ocean Teal (#0A7A90) pill with white text.",
+      "ai_pinned": "AI Assistant chat pinned at top, using subtle cyan glow or border to differentiate."
+    },
+    "chat_screen": {
+      "background": "Use the provided subtle wave texture as ImageBackground with low opacity.",
+      "bubbles": {
+        "sent": "bg-[#E8F5F7] rounded-2xl rounded-br-sm p-4 shadow-sm",
+        "received": "bg-white rounded-2xl rounded-bl-sm p-4 shadow-sm border border-slate-100"
+      },
+      "input_bar": "Solid white bottom bar floating above keyboard with padding. Multi-line input, send, attach, and voice note icons."
+    },
+    "icons": {
+      "library": "@expo/vector-icons",
+      "family": "Feather or Ionicons",
+      "style": "Minimalist, stroke-based, rounded caps."
+    }
+  },
+  "motion_and_interactions": {
+    "button_press": "Scale to 0.95 and slight opacity decrease on press.",
+    "screen_transition": "Standard slide-from-right for chat screens, bottom-sheet slide-up for settings."
+  },
+  "accessibility_and_testing": {
+    "test_id_rule": "Every interactive element MUST include a testID attribute (React Native equivalent to data-testid). Use kebab-case e.g., testID='login-submit-button'.",
+    "contrast": "Ensure primary text meets 4.5:1 contrast against #F0F4F8 background."
+  },
+  "media_urls": {
+    "chat_background": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/0a6fb986-57f6-4143-b026-cc3c8d533f4c/images/5dda163c1d940a241699ed3e8a222f28e5989b3a896ee5168284d6ed020ea7bb.png",
+      "description": "Subtle wave texture background for chat screen"
+    },
+    "ai_avatar": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/0a6fb986-57f6-4143-b026-cc3c8d533f4c/images/d2f56f77cf3edfad4a9352fce5f4beb25e8482a5ae9b951ace5b84f1d947d0f9.png",
+      "description": "3D AI Assistant Avatar for the Wave Bot"
+    },
+    "user_avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1655249493799-9cee4fe983bb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODMwNDQ0Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "User Avatar 1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1576558656222-ba66febe3dec?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHw0fHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODMwNDQ0Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "User Avatar 2"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1762522926157-bcc04bf0b10a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODMwNDQ0Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "User Avatar 3"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1769636929388-99eff95d3bf1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODMwNDQ0Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "User Avatar 4"
+      },
+      {
+        "url": "https://images.pexels.com/photos/14589344/pexels-photo-14589344.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "User Avatar 5"
+      }
+    ]
+  }
+}
