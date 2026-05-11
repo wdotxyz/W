@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
@@ -18,25 +18,64 @@ type Attachment = { filename: string; type: string; content_b64: string; size: n
 export default function Compose() {
   const router = useRouter();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ to?: string; subject?: string }>();
+  const params = useLocalSearchParams<{ to?: string; subject?: string; inReplyTo?: string; threadId?: string; draftId?: string }>();
   const [to, setTo] = useState(params.to || "");
   const [subject, setSubject] = useState(params.subject || "");
   const [body, setBody] = useState("");
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [sending, setSending] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftId, setDraftId] = useState<string | undefined>(params.draftId);
+  const [draftSaved, setDraftSaved] = useState<string | null>(null);
+  const autoSaveRef = useRef<any>(null);
+  const initialLoad = useRef(true);
+
+  // Load draft if draftId in params
+  useEffect(() => {
+    if (!params.draftId) return;
+    (async () => {
+      try {
+        const d = await api<any>(`/mail/${params.draftId}`);
+        setTo((d.to_addrs || []).join(", "));
+        setSubject(d.subject || "");
+        setBody(d.body || "");
+        setAtts(d.attachments || []);
+        setDraftId(d.id);
+      } catch (e) { /* ignore */ }
+    })();
+  }, [params.draftId]);
+
+  // Auto-save draft on changes (debounced)
+  useEffect(() => {
+    if (initialLoad.current) { initialLoad.current = false; return; }
+    if (!to && !subject && !body) return;
+    clearTimeout(autoSaveRef.current);
+    autoSaveRef.current = setTimeout(saveDraft, 1500);
+    return () => clearTimeout(autoSaveRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [to, subject, body]);
+
+  const saveDraft = async () => {
+    if (!user?.email_address) return;
+    setSavingDraft(true);
+    try {
+      const payload = {
+        id: draftId,
+        to: to.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean),
+        subject, body, attachments: atts,
+      };
+      const d = await api<any>("/mail/drafts", { method: "POST", body: JSON.stringify(payload) });
+      setDraftId(d.id);
+      setDraftSaved(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    } catch (e) { /* ignore */ }
+    finally { setSavingDraft(false); }
+  };
 
   const addImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.6,
-    });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.6 });
     if (res.canceled || !res.assets[0].base64) return;
     const a = res.assets[0];
-    setAtts((p) => [...p, {
-      filename: a.fileName || `image-${Date.now()}.jpg`,
-      type: a.mimeType || "image/jpeg",
-      content_b64: a.base64!,
-      size: a.fileSize || (a.base64!.length * 0.75),
-    }]);
+    setAtts((p) => [...p, { filename: a.fileName || `image-${Date.now()}.jpg`, type: a.mimeType || "image/jpeg", content_b64: a.base64!, size: a.fileSize || (a.base64!.length * 0.75) }]);
   };
 
   const addFile = async () => {
@@ -45,12 +84,7 @@ export default function Compose() {
       if (res.canceled || !res.assets?.[0]) return;
       const f = res.assets[0];
       const b64 = await FileSystem.readAsStringAsync(f.uri, { encoding: FileSystem.EncodingType.Base64 });
-      setAtts((p) => [...p, {
-        filename: f.name,
-        type: f.mimeType || "application/octet-stream",
-        content_b64: b64,
-        size: f.size || b64.length * 0.75,
-      }]);
+      setAtts((p) => [...p, { filename: f.name, type: f.mimeType || "application/octet-stream", content_b64: b64, size: f.size || b64.length * 0.75 }]);
     } catch (e: any) { Alert.alert("Couldn't attach", e.message); }
   };
 
@@ -61,22 +95,21 @@ export default function Compose() {
     if (!toList.length) { Alert.alert("Add a recipient"); return; }
     if (!subject.trim() && !body.trim()) { Alert.alert("Add a subject or body"); return; }
     setSending(true);
+    clearTimeout(autoSaveRef.current);
     try {
       const res = await api<any>("/mail/compose", {
         method: "POST",
-        body: JSON.stringify({ to: toList, subject: subject.trim(), body, attachments: atts }),
+        body: JSON.stringify({
+          to: toList, subject: subject.trim(), body, attachments: atts,
+          draft_id: draftId, in_reply_to: params.inReplyTo, thread_id: params.threadId,
+        }),
       });
-      if (res.delivery_status === "sent") {
-        Alert.alert("Sent ✓", "Your email is on its way.");
-      } else if (res.delivery_status === "saved_no_provider") {
-        Alert.alert("Saved to Sent", "SendGrid isn't configured yet — your email is in the Sent folder.");
-      } else {
-        Alert.alert("Delivery issue", res.delivery_error || res.delivery_status);
-      }
+      if (res.delivery_status === "sent") Alert.alert("Sent ✓", "Your email is on its way.");
+      else if (res.delivery_status === "saved_no_provider") Alert.alert("Saved to Sent", "SendGrid isn't configured yet — your email is in the Sent folder.");
+      else Alert.alert("Delivery issue", res.delivery_error || res.delivery_status);
       router.back();
-    } catch (e: any) {
-      Alert.alert("Couldn't send", e.message);
-    } finally { setSending(false); }
+    } catch (e: any) { Alert.alert("Couldn't send", e.message); }
+    finally { setSending(false); }
   };
 
   return (
@@ -86,7 +119,17 @@ export default function Compose() {
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="compose-back">
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.title}>New email</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{params.inReplyTo ? "Reply" : "New email"}</Text>
+            {(savingDraft || draftSaved) && (
+              <Text style={styles.draftStatus} testID="draft-status">
+                {savingDraft ? "Saving draft…" : `Saved ${draftSaved}`}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity onPress={saveDraft} style={styles.draftBtn} testID="save-draft-btn">
+            <Ionicons name="archive-outline" size={18} color={colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={onSend} disabled={sending} style={styles.sendBtn} testID="compose-send">
             {sending ? <ActivityIndicator color="#fff" /> : <>
               <Ionicons name="send" size={16} color="#fff" />
@@ -100,45 +143,18 @@ export default function Compose() {
             <Text style={styles.fieldLabel}>From</Text>
             <Text style={styles.fromValue}>{user?.email_address}</Text>
           </View>
-
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>To</Text>
-            <TextInput
-              style={styles.fieldInput}
-              value={to}
-              onChangeText={setTo}
-              placeholder="someone@example.com"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              testID="compose-to"
-            />
+            <TextInput style={styles.fieldInput} value={to} onChangeText={setTo} placeholder="someone@example.com" placeholderTextColor={colors.textMuted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" testID="compose-to" />
           </View>
-
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Subject</Text>
-            <TextInput
-              style={styles.fieldInput}
-              value={subject}
-              onChangeText={setSubject}
-              placeholder="Subject"
-              placeholderTextColor={colors.textMuted}
-              testID="compose-subject"
-            />
+            <TextInput style={styles.fieldInput} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.textMuted} testID="compose-subject" />
           </View>
-
-          <TextInput
-            style={styles.body}
-            value={body}
-            onChangeText={setBody}
-            placeholder="Write your email…"
-            placeholderTextColor={colors.textMuted}
-            multiline
-            textAlignVertical="top"
-            testID="compose-body"
-          />
-
+          <TextInput style={styles.body} value={body} onChangeText={setBody} placeholder="Write your email…" placeholderTextColor={colors.textMuted} multiline textAlignVertical="top" testID="compose-body" />
+          {!!user?.signature && (
+            <Text style={styles.sigHint} testID="signature-hint">Your signature will be appended automatically.</Text>
+          )}
           {!!atts.length && (
             <View style={styles.attsWrap}>
               {atts.map((a, i) => (
@@ -152,7 +168,6 @@ export default function Compose() {
               ))}
             </View>
           )}
-
           <View style={styles.attBar}>
             <TouchableOpacity style={styles.attBtn} onPress={addImage} testID="compose-attach-image">
               <Ionicons name="image" size={18} color={colors.accent} />
@@ -173,7 +188,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   header: { flexDirection: "row", alignItems: "center", padding: space.md, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, fontSize: 18, fontWeight: "800", color: colors.text },
+  title: { fontSize: 18, fontWeight: "800", color: colors.text },
+  draftStatus: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  draftBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2 },
   sendBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: radius.pill },
   sendText: { color: "#fff", fontWeight: "700" },
   fromRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: space.lg, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 16 },
@@ -181,8 +198,9 @@ const styles = StyleSheet.create({
   field: { paddingHorizontal: space.lg, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 16 },
   fieldLabel: { width: 56, fontSize: 14, fontWeight: "700", color: colors.textMuted },
   fieldInput: { flex: 1, fontSize: 15, color: colors.text },
-  body: { padding: space.lg, fontSize: 15, color: colors.text, minHeight: 240, lineHeight: 22 },
-  attsWrap: { paddingHorizontal: space.lg, gap: 8 },
+  body: { padding: space.lg, fontSize: 15, color: colors.text, minHeight: 220, lineHeight: 22 },
+  sigHint: { fontSize: 12, color: colors.textMuted, paddingHorizontal: space.lg, fontStyle: "italic" },
+  attsWrap: { paddingHorizontal: space.lg, gap: 8, marginTop: 12 },
   attChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface2, padding: 10, borderRadius: radius.md },
   attName: { flex: 1, fontSize: 13, color: colors.text },
   attBar: { flexDirection: "row", gap: 10, padding: space.lg },

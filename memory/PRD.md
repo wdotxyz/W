@@ -19,7 +19,7 @@
 - Wave AI assistant — pinned/auto-created in chats, replies in any chat that includes it
 - Notification Settings: master mute, message/group sounds, preview toggle, vibration
 - In-app notification banner with WebAudio chime
-- **Wave Mail (@w.xyz webmail)**: pick unique handle (reserved list enforced), Inbox + Sent folders, full-screen compose with To/Subject/Body + photo/file attachments, mail detail with Reply, **real send via SendGrid API** (when key configured), **real receive via SendGrid Inbound Parse webhook** at `/api/mail/inbound`, graceful fallback to "saved_no_provider" when key absent so the UI works end-to-end immediately.
+- **Wave Mail (@w.xyz webmail)**: pick unique handle (reserved list enforced), **Inbox + Drafts + Sent** folders, **search** (subject/body/from/to with regex), full-screen compose with To/Subject/Body + photo/file attachments, **auto-save drafts** + manual save button, **mail detail** with HTML rendering (sanitized, rich/plain toggle on web) + Reply, **threading by Message-ID + In-Reply-To headers** (groups in list with thread count badge), **email signature** (per-user, auto-appended on send), **real send via SendGrid API** (when key configured), **real receive via SendGrid Inbound Parse webhook** at `/api/mail/inbound` with proper header parsing, graceful fallback to "saved_no_provider" when key absent.
 - Sign out
 
 ## Color Palette (Wave)

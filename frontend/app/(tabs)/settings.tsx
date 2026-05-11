@@ -39,6 +39,7 @@ export default function SettingsScreen() {
 
         <View style={styles.group}>
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
+          <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
           <Row icon="lock-closed" label="Privacy" />
           <Row icon="color-palette" label="Theme" hint="Wave" />
           <Row icon="help-circle" label="Help & Support" />

@@ -13,6 +13,7 @@ export default function MailDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [mail, setMail] = useState<any>(null);
+  const [showHtml, setShowHtml] = useState(true);
 
   useEffect(() => {
     api<any>(`/mail/${id}`).then(setMail).catch(() => setMail(null));
@@ -22,7 +23,12 @@ export default function MailDetail() {
     if (!mail) return;
     router.push({
       pathname: "/mail/compose",
-      params: { to: mail.from_addr, subject: `Re: ${mail.subject}` },
+      params: {
+        to: mail.from_addr,
+        subject: mail.subject?.toLowerCase().startsWith("re:") ? mail.subject : `Re: ${mail.subject}`,
+        inReplyTo: mail.message_id || "",
+        threadId: mail.thread_id || "",
+      },
     });
   };
 
@@ -86,7 +92,27 @@ export default function MailDetail() {
           </View>
         )}
 
-        <Text style={styles.body} testID="mail-body">{mail.body}</Text>
+        {!!mail.body_html && Platform.OS === "web" ? (
+          <View style={styles.htmlToggleRow}>
+            <TouchableOpacity onPress={() => setShowHtml(true)} style={[styles.htmlTab, showHtml && styles.htmlTabOn]} testID="html-tab-rich">
+              <Text style={[styles.htmlTabText, showHtml && styles.htmlTabTextOn]}>Rich</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowHtml(false)} style={[styles.htmlTab, !showHtml && styles.htmlTabOn]} testID="html-tab-plain">
+              <Text style={[styles.htmlTabText, !showHtml && styles.htmlTabTextOn]}>Plain</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {showHtml && !!mail.body_html && Platform.OS === "web" ? (
+          // @ts-ignore — RN-Web renders div; use innerHTML for sanitized HTML body.
+          React.createElement("div", {
+            "data-testid": "mail-body-html",
+            style: { marginTop: 20, fontSize: 15, color: colors.text, lineHeight: 1.55, wordBreak: "break-word" },
+            dangerouslySetInnerHTML: { __html: mail.body_html },
+          })
+        ) : (
+          <Text style={styles.body} testID="mail-body">{mail.body}</Text>
+        )}
 
         {!!mail.attachments?.length && (
           <View style={styles.atts}>
@@ -137,6 +163,11 @@ const styles = StyleSheet.create({
   time: { fontSize: 12, color: colors.textMuted },
   banner: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 16, padding: 12, borderRadius: radius.md, backgroundColor: "#E8F5F7" },
   bannerText: { flex: 1, fontSize: 12, color: colors.text },
+  htmlToggleRow: { flexDirection: "row", gap: 6, marginTop: 18 },
+  htmlTab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.surface2 },
+  htmlTabOn: { backgroundColor: colors.primary },
+  htmlTabText: { fontSize: 12, color: colors.textMuted, fontWeight: "700" },
+  htmlTabTextOn: { color: "#fff" },
   body: { marginTop: 22, fontSize: 15, color: colors.text, lineHeight: 23 },
   atts: { marginTop: 24, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
   attsTitle: { fontSize: 12, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 },

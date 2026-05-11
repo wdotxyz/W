@@ -161,6 +161,17 @@ async def update_notif_settings(req: NotifSettingsReq, user=Depends(get_current_
     return fresh.get("notif", {}) if fresh else {}
 
 
+class SignatureReq(BaseModel):
+    signature: str = ""
+
+
+@api_router.patch("/auth/signature")
+async def update_signature(req: SignatureReq, user=Depends(get_current_user)):
+    sig = (req.signature or "")[:1000]
+    await db.users.update_one({"id": user["id"]}, {"$set": {"signature": sig}})
+    return {"signature": sig}
+
+
 # -------------------- Users --------------------
 @api_router.get("/users")
 async def list_users(user=Depends(get_current_user)):
@@ -366,6 +377,17 @@ class ComposeMailReq(BaseModel):
     subject: str = ""
     body: str = ""
     attachments: Optional[List[Dict[str, Any]]] = None  # [{filename, content_b64, type}]
+    draft_id: Optional[str] = None
+    in_reply_to: Optional[str] = None
+    thread_id: Optional[str] = None
+
+
+class DraftReq(BaseModel):
+    id: Optional[str] = None
+    to: List[str] = []
+    subject: str = ""
+    body: str = ""
+    attachments: Optional[List[Dict[str, Any]]] = None
 
 
 def _validate_handle(h: str) -> str:
@@ -413,6 +435,85 @@ async def mail_sent(user=Depends(get_current_user)):
     return msgs
 
 
+@api_router.get("/mail/drafts")
+async def mail_drafts(user=Depends(get_current_user)):
+    msgs = await db.emails.find({"owner_id": user["id"], "folder": "drafts"}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return msgs
+
+
+@api_router.get("/mail/search")
+async def mail_search(q: str, user=Depends(get_current_user)):
+    q = (q or "").strip()
+    if not q:
+        return []
+    addr = (user.get("email_address") or "").lower()
+    pattern = re.escape(q)
+    query = {
+        "$and": [
+            {"$or": [
+                {"owner_id": user["id"]},
+                {"to_addrs": addr},
+            ]},
+            {"$or": [
+                {"subject": {"$regex": pattern, "$options": "i"}},
+                {"body": {"$regex": pattern, "$options": "i"}},
+                {"from_addr": {"$regex": pattern, "$options": "i"}},
+                {"from_name": {"$regex": pattern, "$options": "i"}},
+                {"to_addrs": {"$regex": pattern, "$options": "i"}},
+            ]},
+        ]
+    }
+    msgs = await db.emails.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return msgs
+
+
+@api_router.post("/mail/drafts")
+async def save_draft(req: DraftReq, user=Depends(get_current_user)):
+    if not user.get("email_address"):
+        raise HTTPException(400, "Set up your @w.xyz handle first.")
+    now = now_iso()
+    if req.id:
+        existing = await db.emails.find_one({"id": req.id, "owner_id": user["id"], "folder": "drafts"}, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, "Draft not found")
+        update = {
+            "to_addrs": [a.strip().lower() for a in (req.to or []) if a.strip()],
+            "subject": req.subject or "",
+            "body": req.body or "",
+            "attachments": req.attachments or [],
+            "updated_at": now,
+        }
+        await db.emails.update_one({"id": req.id}, {"$set": update})
+        fresh = await db.emails.find_one({"id": req.id}, {"_id": 0})
+        return fresh
+    record = {
+        "id": str(uuid.uuid4()),
+        "owner_id": user["id"],
+        "folder": "drafts",
+        "from_addr": user["email_address"],
+        "from_name": user.get("name") or user["email_address"],
+        "to_addrs": [a.strip().lower() for a in (req.to or []) if a.strip()],
+        "subject": req.subject or "",
+        "body": req.body or "",
+        "attachments": req.attachments or [],
+        "read": True,
+        "created_at": now,
+        "updated_at": now,
+        "delivery_status": "draft",
+    }
+    await db.emails.insert_one(dict(record))
+    return record
+
+
+@api_router.delete("/mail/{mail_id}")
+async def mail_delete(mail_id: str, user=Depends(get_current_user)):
+    m = await db.emails.find_one({"id": mail_id}, {"_id": 0})
+    if not m or m.get("owner_id") != user["id"]:
+        raise HTTPException(404, "Not found")
+    await db.emails.delete_one({"id": mail_id})
+    return {"ok": True}
+
+
 @api_router.get("/mail/{mail_id}")
 async def mail_detail(mail_id: str, user=Depends(get_current_user)):
     m = await db.emails.find_one({"id": mail_id}, {"_id": 0})
@@ -442,6 +543,21 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
 
     from_addr = user["email_address"]
     mail_id = str(uuid.uuid4())
+    message_id = f"<{mail_id}@{MAIL_DOMAIN}>"
+    # Determine thread_id: continue parent's thread, or start new from message_id
+    thread_id = req.thread_id
+    if req.in_reply_to and not thread_id:
+        parent = await db.emails.find_one({"message_id": req.in_reply_to}, {"_id": 0, "thread_id": 1})
+        thread_id = (parent or {}).get("thread_id") or req.in_reply_to
+    if not thread_id:
+        thread_id = message_id
+
+    # Append signature
+    body_out = req.body or ""
+    sig = (user.get("signature") or "").strip()
+    if sig and "-- " not in body_out:
+        body_out = f"{body_out}\n\n-- \n{sig}"
+
     record = {
         "id": mail_id,
         "owner_id": user["id"],
@@ -450,12 +566,16 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
         "from_name": user.get("name") or from_addr,
         "to_addrs": [a.strip().lower() for a in req.to if a.strip()],
         "subject": req.subject or "(no subject)",
-        "body": req.body or "",
+        "body": body_out,
+        "body_html": "",
         "attachments": req.attachments or [],
         "read": True,
         "created_at": now_iso(),
         "delivery_status": "queued",
         "delivery_error": None,
+        "message_id": message_id,
+        "in_reply_to": req.in_reply_to,
+        "thread_id": thread_id,
     }
 
     if SENDGRID_API_KEY:
@@ -465,7 +585,7 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
             msg = Mail(
                 from_email=Email(from_addr, user.get("name") or from_addr),
                 subject=req.subject or "(no subject)",
-                plain_text_content=Content("text/plain", req.body or " "),
+                plain_text_content=Content("text/plain", body_out or " "),
             )
             for addr in record["to_addrs"]:
                 msg.add_to(To(addr))
@@ -490,6 +610,9 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
         record["delivery_error"] = "SendGrid API key not configured yet; email saved to Sent folder only."
 
     await db.emails.insert_one(dict(record))
+    # If composed from a draft, delete it after send
+    if req.draft_id:
+        await db.emails.delete_one({"id": req.draft_id, "owner_id": user["id"], "folder": "drafts"})
     return record
 
 
@@ -535,6 +658,38 @@ async def mail_inbound(request: Request):
     sender_match = re.search(r"[\w._+-]+@[\w.-]+", frm or "")
     sender = sender_match.group(0).lower() if sender_match else frm
 
+    # Parse threading headers from SendGrid Inbound Parse "headers" field
+    raw_headers = form.get("headers") or ""
+    msg_id = None
+    in_reply_to = None
+    references = None
+    if raw_headers:
+        for line in str(raw_headers).split("\n"):
+            low = line.lower()
+            if low.startswith("message-id:"):
+                m = re.search(r"<[^>]+>", line)
+                if m: msg_id = m.group(0)
+            elif low.startswith("in-reply-to:"):
+                m = re.search(r"<[^>]+>", line)
+                if m: in_reply_to = m.group(0)
+            elif low.startswith("references:"):
+                refs = re.findall(r"<[^>]+>", line)
+                if refs: references = refs
+
+    # Find thread_id (continue parent's thread)
+    thread_id = None
+    if in_reply_to:
+        parent = await db.emails.find_one({"message_id": in_reply_to}, {"_id": 0, "thread_id": 1})
+        thread_id = (parent or {}).get("thread_id") or in_reply_to
+    if not thread_id and references:
+        for r in references:
+            parent = await db.emails.find_one({"message_id": r}, {"_id": 0, "thread_id": 1})
+            if parent:
+                thread_id = parent.get("thread_id") or r
+                break
+    if not thread_id:
+        thread_id = msg_id or str(uuid.uuid4())
+
     stored = 0
     for addr in domain_to:
         owner = await db.users.find_one({"email_address": addr}, {"_id": 0})
@@ -549,11 +704,14 @@ async def mail_inbound(request: Request):
             "to_addrs": to_addrs,
             "subject": subject or "(no subject)",
             "body": text or _strip_html(html),
-            "body_html": html,
+            "body_html": _sanitize_html(html),
             "attachments": attachments,
             "read": False,
             "created_at": now_iso(),
             "delivery_status": "received",
+            "message_id": msg_id,
+            "in_reply_to": in_reply_to,
+            "thread_id": thread_id,
         }
         await db.emails.insert_one(dict(rec))
         stored += 1
@@ -564,6 +722,23 @@ async def mail_inbound(request: Request):
 
 def _strip_html(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s or "").strip()
+
+
+def _sanitize_html(s: str) -> str:
+    """Basic HTML sanitization — strip scripts/iframes/on* handlers/javascript URLs.
+    Not bulletproof but blocks the obvious XSS for our internal renderer.
+    """
+    if not s:
+        return ""
+    out = s
+    out = re.sub(r"<\s*(script|style|iframe|object|embed|link|meta)[^>]*>.*?<\s*/\s*\1\s*>", "", out, flags=re.I | re.S)
+    out = re.sub(r"<\s*(script|style|iframe|object|embed|link|meta)[^>]*/?\s*>", "", out, flags=re.I)
+    out = re.sub(r"\s+on\w+\s*=\s*\"[^\"]*\"", "", out, flags=re.I)
+    out = re.sub(r"\s+on\w+\s*=\s*'[^']*'", "", out, flags=re.I)
+    out = re.sub(r"\s+on\w+\s*=\s*[^\s>]+", "", out, flags=re.I)
+    out = re.sub(r"(href|src)\s*=\s*\"\s*javascript:[^\"]*\"", r'\1="#"', out, flags=re.I)
+    out = re.sub(r"(href|src)\s*=\s*'\s*javascript:[^']*'", r"\1='#'", out, flags=re.I)
+    return out
 
 
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl,
   ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert,
@@ -10,51 +10,92 @@ import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
 
+type Folder = "inbox" | "drafts" | "sent";
+
 export default function MailScreen() {
   const router = useRouter();
   const { user, setUser, subscribe } = useAuth();
-  const [folder, setFolder] = useState<"inbox" | "sent">("inbox");
+  const [folder, setFolder] = useState<Folder>("inbox");
   const [emails, setEmails] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
+  const debounceRef = useRef<any>(null);
 
   const hasHandle = !!user?.email_address;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (q?: string) => {
     if (!hasHandle) { setLoading(false); return; }
     try {
-      const data = await api<any[]>(`/mail/${folder}`);
-      setEmails(data);
+      const path = q ? `/mail/search?q=${encodeURIComponent(q)}` : `/mail/${folder}`;
+      const data = await api<any[]>(path);
+      // Group by thread_id (latest message per thread)
+      const grouped = groupByThread(data);
+      setEmails(grouped);
     } catch (e) { console.warn(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [folder, hasHandle]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { if (!searchActive) load(); }, [load, searchActive]));
 
   useEffect(() => {
     return subscribe((m: any) => {
-      if (m.type === "new_email" && folder === "inbox") load();
+      if (m.type === "new_email" && folder === "inbox" && !searchActive) load();
     });
-  }, [subscribe, folder, load]);
+  }, [subscribe, folder, load, searchActive]);
+
+  useEffect(() => {
+    if (!searchActive) return;
+    clearTimeout(debounceRef.current);
+    if (!search.trim()) { setEmails([]); return; }
+    debounceRef.current = setTimeout(() => load(search.trim()), 300);
+  }, [search, searchActive, load]);
 
   if (!hasHandle) return <HandlePicker onClaimed={(u) => setUser(u)} />;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Mail</Text>
-          <Text style={styles.addr} testID="my-email-addr">{user.email_address}</Text>
-        </View>
-        <TouchableOpacity style={styles.composeFab} onPress={() => router.push("/mail/compose")} testID="compose-fab">
-          <Ionicons name="create" size={22} color="#fff" />
-        </TouchableOpacity>
+        {searchActive ? (
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search mail"
+              placeholderTextColor={colors.textMuted}
+              autoFocus
+              testID="mail-search-input"
+            />
+            <TouchableOpacity onPress={() => { setSearchActive(false); setSearch(""); load(); }} testID="mail-search-close">
+              <Ionicons name="close" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Mail</Text>
+              <Text style={styles.addr} testID="my-email-addr">{user.email_address}</Text>
+            </View>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setSearchActive(true)} testID="mail-search-btn">
+              <Ionicons name="search" size={20} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.composeFab} onPress={() => router.push("/mail/compose")} testID="compose-fab">
+              <Ionicons name="create" size={22} color="#fff" />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
-      <View style={styles.tabs}>
-        <FolderTab label="Inbox" active={folder === "inbox"} onPress={() => setFolder("inbox")} testID="mail-tab-inbox" />
-        <FolderTab label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
-      </View>
+      {!searchActive && (
+        <View style={styles.tabs}>
+          <FolderTab label="Inbox" active={folder === "inbox"} onPress={() => setFolder("inbox")} testID="mail-tab-inbox" />
+          <FolderTab label="Drafts" active={folder === "drafts"} onPress={() => setFolder("drafts")} testID="mail-tab-drafts" />
+          <FolderTab label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
+        </View>
+      )}
 
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
@@ -62,25 +103,55 @@ export default function MailScreen() {
         <FlatList
           data={emails}
           keyExtractor={(m) => m.id}
-          renderItem={({ item }) => <MailRow mail={item} folder={folder} onPress={() => router.push(`/mail/${item.id}`)} />}
+          renderItem={({ item }) => (
+            <MailRow
+              mail={item}
+              folder={folder}
+              onPress={() => {
+                if (folder === "drafts") router.push({ pathname: "/mail/compose", params: { draftId: item.id } });
+                else router.push(`/mail/${item.id}`);
+              }}
+            />
+          )}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name={folder === "inbox" ? "mail-open-outline" : "send-outline"} size={48} color={colors.textMuted} />
-              <Text style={styles.emptyTitle}>{folder === "inbox" ? "Inbox empty" : "No sent mail"}</Text>
-              <Text style={styles.emptySub}>
-                {folder === "inbox"
-                  ? `Send emails to ${user.email_address} from any provider. They'll appear here once SendGrid Inbound Parse is configured.`
-                  : "Tap the pencil to compose."}
+              <Ionicons name={searchActive ? "search-outline" : folder === "inbox" ? "mail-open-outline" : folder === "drafts" ? "document-text-outline" : "send-outline"} size={48} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>
+                {searchActive ? (search ? "No results" : "Search your mail") : folder === "inbox" ? "Inbox empty" : folder === "drafts" ? "No drafts" : "No sent mail"}
               </Text>
+              {!searchActive && (
+                <Text style={styles.emptySub}>
+                  {folder === "inbox"
+                    ? `Send emails to ${user.email_address} from any provider.`
+                    : folder === "drafts" ? "Drafts you save while composing will appear here."
+                    : "Tap the pencil to compose."}
+                </Text>
+              )}
             </View>
           }
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(searchActive ? search.trim() : undefined); }} tintColor={colors.accent} />}
           contentContainerStyle={{ paddingBottom: 40 }}
         />
       )}
     </SafeAreaView>
   );
+}
+
+// Group by thread_id, keep latest per thread, attach count
+function groupByThread(rows: any[]): any[] {
+  const byThread: Record<string, any[]> = {};
+  for (const r of rows) {
+    const k = r.thread_id || r.id;
+    (byThread[k] = byThread[k] || []).push(r);
+  }
+  const out = Object.values(byThread).map((arr) => {
+    arr.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    const top = arr[0];
+    return { ...top, _thread_count: arr.length };
+  });
+  out.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  return out;
 }
 
 const FolderTab = ({ label, active, onPress, testID }: any) => (
@@ -91,7 +162,7 @@ const FolderTab = ({ label, active, onPress, testID }: any) => (
 
 const MailRow = ({ mail, folder, onPress }: any) => {
   const unread = folder === "inbox" && !mail.read;
-  const who = folder === "inbox" ? (mail.from_name || mail.from_addr) : (mail.to_addrs?.join(", ") || "—");
+  const who = folder === "inbox" ? (mail.from_name || mail.from_addr) : folder === "drafts" ? `Draft: ${(mail.to_addrs || []).join(", ") || "—"}` : (mail.to_addrs?.join(", ") || "—");
   const preview = (mail.body || "").replace(/\s+/g, " ").slice(0, 90);
   return (
     <TouchableOpacity onPress={onPress} style={styles.row} testID={`mail-row-${mail.id}`} activeOpacity={0.7}>
@@ -99,9 +170,10 @@ const MailRow = ({ mail, folder, onPress }: any) => {
       <View style={{ flex: 1 }}>
         <View style={styles.rowTop}>
           <Text style={[styles.who, unread && { fontWeight: "800" }]} numberOfLines={1}>{who}</Text>
+          {mail._thread_count > 1 && <Text style={styles.threadCount}>· {mail._thread_count}</Text>}
           <Text style={styles.time}>{formatDate(mail.created_at)}</Text>
         </View>
-        <Text style={[styles.subj, unread && { fontWeight: "700", color: colors.text }]} numberOfLines={1}>{mail.subject}</Text>
+        <Text style={[styles.subj, unread && { fontWeight: "700", color: colors.text }]} numberOfLines={1}>{mail.subject || "(no subject)"}</Text>
         <Text style={styles.preview} numberOfLines={1}>{preview}</Text>
         {!!mail.attachments?.length && (
           <View style={styles.attachRow}>
@@ -123,12 +195,11 @@ function formatDate(iso?: string) {
   return d.toLocaleDateString([], { day: "2-digit", month: "short" });
 }
 
-// ---------- Handle Picker (shown when user hasn't claimed @w.xyz address) ----------
+// ---------- Handle Picker ----------
 const HandlePicker = ({ onClaimed }: { onClaimed: (u: any) => void }) => {
   const [handle, setHandle] = useState("");
   const [status, setStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean }>({});
   const [claiming, setClaiming] = useState(false);
-
   useEffect(() => {
     if (handle.length < 3) { setStatus({}); return; }
     setStatus({ checking: true });
@@ -140,20 +211,13 @@ const HandlePicker = ({ onClaimed }: { onClaimed: (u: any) => void }) => {
     }, 350);
     return () => clearTimeout(t);
   }, [handle]);
-
   const onClaim = async () => {
     setClaiming(true);
     try {
-      const u = await api<any>("/mail/claim-handle", {
-        method: "POST",
-        body: JSON.stringify({ handle: handle.trim().toLowerCase() }),
-      });
+      const u = await api<any>("/mail/claim-handle", { method: "POST", body: JSON.stringify({ handle: handle.trim().toLowerCase() }) });
       onClaimed(u);
-    } catch (e: any) {
-      Alert.alert("Couldn't claim", e.message || "Try a different handle.");
-    } finally { setClaiming(false); }
+    } catch (e: any) { Alert.alert("Couldn't claim", e.message); } finally { setClaiming(false); }
   };
-
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
@@ -161,34 +225,19 @@ const HandlePicker = ({ onClaimed }: { onClaimed: (u: any) => void }) => {
           <View style={styles.heroIcon}><Ionicons name="mail" size={36} color="#fff" /></View>
           <Text style={styles.pickTitle}>Claim your @w.xyz address</Text>
           <Text style={styles.pickSub}>Pick a handle that's yours. Real email — send to anyone, receive from anyone.</Text>
-
           <View style={styles.handleRow}>
-            <TextInput
-              style={styles.handleInput}
-              placeholder="yourhandle"
-              placeholderTextColor={colors.textMuted}
-              value={handle}
-              onChangeText={(t) => setHandle(t.toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 32))}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              testID="handle-input"
-            />
+            <TextInput style={styles.handleInput} placeholder="yourhandle" placeholderTextColor={colors.textMuted}
+              value={handle} onChangeText={(t) => setHandle(t.toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 32))}
+              autoCapitalize="none" autoCorrect={false} autoFocus testID="handle-input" />
             <Text style={styles.domain}>@w.xyz</Text>
           </View>
           {status.checking && <Text style={styles.statusLine}>Checking…</Text>}
           {!status.checking && status.available === true && <Text style={[styles.statusLine, { color: colors.success }]}>✓ Available</Text>}
           {!status.checking && status.available === false && <Text style={[styles.statusLine, { color: colors.danger }]}>✕ {status.reason || "Taken"}</Text>}
-
-          <TouchableOpacity
-            style={[styles.claimBtn, (!status.available || claiming) && { opacity: 0.5 }]}
-            disabled={!status.available || claiming}
-            onPress={onClaim}
-            testID="claim-handle-btn"
-          >
+          <TouchableOpacity style={[styles.claimBtn, (!status.available || claiming) && { opacity: 0.5 }]}
+            disabled={!status.available || claiming} onPress={onClaim} testID="claim-handle-btn">
             {claiming ? <ActivityIndicator color="#fff" /> : <Text style={styles.claimText}>Claim {handle}@w.xyz</Text>}
           </TouchableOpacity>
-
           <Text style={styles.legal}>Reserved handles (admin, support, etc.) are not allowed.</Text>
         </View>
       </KeyboardAvoidingView>
@@ -198,24 +247,24 @@ const HandlePicker = ({ onClaimed }: { onClaimed: (u: any) => void }) => {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
-  header: { paddingHorizontal: space.xl, paddingVertical: space.md, flexDirection: "row", alignItems: "center" },
+  header: { paddingHorizontal: space.xl, paddingVertical: space.md, flexDirection: "row", alignItems: "center", gap: 8 },
   title: { fontSize: 30, fontWeight: "800", color: colors.primary, letterSpacing: -0.5 },
   addr: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
-  composeFab: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary,
-    alignItems: "center", justifyContent: "center",
-    shadowColor: colors.primary, shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5,
-  },
+  iconBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center" },
+  composeFab: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  searchRow: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.pill, paddingHorizontal: 14, gap: 8 },
+  searchInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 10 },
   tabs: { flexDirection: "row", gap: 8, paddingHorizontal: space.xl, marginBottom: 8 },
-  foldBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.surface2 },
+  foldBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.surface2 },
   foldBtnOn: { backgroundColor: colors.primary },
   foldText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
   foldTextOn: { color: "#fff" },
   row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: space.xl, paddingVertical: 12, gap: 10 },
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 7 },
-  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: 6 },
   who: { fontSize: 15, fontWeight: "700", color: colors.text, flex: 1 },
-  time: { fontSize: 12, color: colors.textMuted, marginLeft: 8 },
+  threadCount: { fontSize: 12, color: colors.accent, fontWeight: "700" },
+  time: { fontSize: 12, color: colors.textMuted },
   subj: { fontSize: 14, color: colors.text, marginTop: 2 },
   preview: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   attachRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
@@ -226,11 +275,7 @@ const styles = StyleSheet.create({
   emptySub: { color: colors.textMuted, marginTop: 4, textAlign: "center", lineHeight: 19 },
 
   pickWrap: { flex: 1, padding: space.xl, justifyContent: "center" },
-  heroIcon: {
-    width: 72, height: 72, borderRadius: 22, backgroundColor: colors.primary,
-    alignItems: "center", justifyContent: "center", marginBottom: 18,
-    shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 6,
-  },
+  heroIcon: { width: 72, height: 72, borderRadius: 22, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginBottom: 18 },
   pickTitle: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   pickSub: { fontSize: 14, color: colors.textMuted, marginTop: 6, marginBottom: 24, lineHeight: 20 },
   handleRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
