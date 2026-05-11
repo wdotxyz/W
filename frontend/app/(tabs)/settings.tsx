@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,23 +11,13 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
 
-  const doSignOut = async () => {
-    await signOut();
-    router.replace("/(auth)/welcome");
-  };
-
-  const onSignOut = () => {
-    if (Platform.OS === "web") {
-      // eslint-disable-next-line no-alert
-      if (typeof window !== "undefined" && window.confirm("Sign out of Wave?")) {
-        doSignOut();
-      }
-      return;
+  const onSignOut = async () => {
+    try {
+      await signOut();
+    } catch (e) {
+      console.warn("signOut error:", e);
     }
-    Alert.alert("Sign out", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: doSignOut },
-    ]);
+    router.replace("/(auth)/welcome");
   };
 
   return (
