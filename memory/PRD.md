@@ -11,12 +11,15 @@
 ## Implemented Features (MVP)
 - Phone + OTP auth (DEV MODE — OTP returned in API + autofilled in UI; Twilio swap-in ready)
 - Profile setup (name + base64 avatar)
-- Tab nav: Chats, Calls (placeholder), Settings
+- Tab nav: **Chats, Mail, Calls (placeholder), Settings**
 - 1-on-1 chats, Group chats (create with name + members)
 - Real-time messaging via WebSocket (auto-reconnect)
 - Text, image (base64), and voice-note (base64 m4a) messages
 - Typing indicators, online/last-seen, unread badges
 - Wave AI assistant — pinned/auto-created in chats, replies in any chat that includes it
+- Notification Settings: master mute, message/group sounds, preview toggle, vibration
+- In-app notification banner with WebAudio chime
+- **Wave Mail (@w.xyz webmail)**: pick unique handle (reserved list enforced), Inbox + Sent folders, full-screen compose with To/Subject/Body + photo/file attachments, mail detail with Reply, **real send via SendGrid API** (when key configured), **real receive via SendGrid Inbound Parse webhook** at `/api/mail/inbound`, graceful fallback to "saved_no_provider" when key absent so the UI works end-to-end immediately.
 - Sign out
 
 ## Color Palette (Wave)
