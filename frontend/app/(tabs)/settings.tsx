@@ -38,7 +38,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.group}>
-          <Row icon="notifications" label="Notifications" />
+          <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="lock-closed" label="Privacy" />
           <Row icon="color-palette" label="Theme" hint="Wave" />
           <Row icon="help-circle" label="Help & Support" />
@@ -54,13 +54,13 @@ export default function SettingsScreen() {
   );
 }
 
-const Row = ({ icon, label, hint }: any) => (
-  <View style={styles.rowItem}>
+const Row = ({ icon, label, hint, onPress, testID }: any) => (
+  <TouchableOpacity onPress={onPress} disabled={!onPress} activeOpacity={onPress ? 0.6 : 1} style={styles.rowItem} testID={testID}>
     <View style={styles.rowIcon}><Ionicons name={icon} size={18} color={colors.accent} /></View>
     <Text style={styles.rowLabel}>{label}</Text>
     {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
     <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-  </View>
+  </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({

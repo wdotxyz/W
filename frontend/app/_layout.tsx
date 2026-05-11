@@ -1,9 +1,10 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "../src/auth";
+import NotificationBanner from "../src/NotificationBanner";
 
 export default function RootLayout() {
   return (
@@ -18,7 +19,9 @@ export default function RootLayout() {
             <Stack.Screen name="chat/[id]" />
             <Stack.Screen name="new-chat" options={{ presentation: "modal" }} />
             <Stack.Screen name="new-group" options={{ presentation: "modal" }} />
+            <Stack.Screen name="notification-settings" />
           </Stack>
+          <NotificationBanner />
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

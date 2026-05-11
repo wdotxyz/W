@@ -42,6 +42,14 @@ class ProfileReq(BaseModel):
     avatar: Optional[str] = None  # base64 or URL
     about: Optional[str] = "Hey there! I'm using Wave."
 
+
+class NotifSettingsReq(BaseModel):
+    message_sounds: Optional[bool] = None
+    group_sounds: Optional[bool] = None
+    show_preview: Optional[bool] = None
+    vibration: Optional[bool] = None
+    mute_all: Optional[bool] = None
+
 class CreateChatReq(BaseModel):
     member_ids: List[str]
     is_group: bool = False
@@ -132,6 +140,15 @@ async def update_profile(req: ProfileReq, user=Depends(get_current_user)):
 @api_router.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return user
+
+
+@api_router.patch("/auth/notification-settings")
+async def update_notif_settings(req: NotifSettingsReq, user=Depends(get_current_user)):
+    update = {f"notif.{k}": v for k, v in req.dict().items() if v is not None}
+    if update:
+        await db.users.update_one({"id": user["id"]}, {"$set": update})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return fresh.get("notif", {}) if fresh else {}
 
 
 # -------------------- Users --------------------
