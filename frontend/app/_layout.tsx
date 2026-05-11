@@ -20,6 +20,7 @@ export default function RootLayout() {
             <Stack.Screen name="new-chat" options={{ presentation: "modal" }} />
             <Stack.Screen name="new-group" options={{ presentation: "modal" }} />
             <Stack.Screen name="notification-settings" />
+            <Stack.Screen name="mail" />
           </Stack>
           <NotificationBanner />
         </AuthProvider>

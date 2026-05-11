@@ -1,0 +1,39 @@
+{
+  "summary": "Wave Mail feature — full backend + frontend E2E review. Backend: 19/19 pytest tests PASSED in /app/backend/tests/test_wave_mail.py covering check-handle (reserved 'admin' rejected, too-short 'ab' rejected, available, 401 unauth), claim-handle (reserved 400, bad-format 400, success persists email_handle/email_address, duplicate 409), compose without SendGrid key (delivery_status='saved_no_provider', folder='sent', no _id leak, blocked 400 without handle), GET /mail/sent and /mail/inbox (no _id leak), GET /mail/{id} (owner allowed, outsider 403/404), and POST /api/mail/inbound webhook (multipart, no auth — stores for matching @w.xyz user, drops unknown recipient + off-domain, stored=0/1 correctly, from_addr parsed). Frontend (Expo web preview, mobile 390x844): full E2E PASSED — auth (welcome→phone→OTP autofill→verify→profile-setup), 4-tab bar shows Chats/Mail/Calls/Settings in correct order with Mail as 2nd tab, HandlePicker (admin shows ✕ reserved + disables Claim, 'ab' too short hides Available, valid handle shows ✓ Available), Claim flow updates user.email_address, mail screen renders Inbox/Sent pills + compose FAB + 'my-email-addr', empty states correct, compose opens with From=user.email_address, To/Subject/Body inputs + Photo/File buttons work, Send POSTs /api/mail/compose, email lands in Sent folder list, tap row opens detail screen with subject/body/Reply, Reply pre-fills 'Re: <subject>' in compose. All testIDs present and working.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Existing cosmetic deprecation warnings only: 'shadow*' style props (use boxShadow), props.pointerEvents (use style.pointerEvents). Unrelated to Mail feature."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wave_mail.py",
+    "/app/test_reports/pytest/wave_mail_results.xml",
+    "/app/backend/tests/test_wave_backend.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 680 lines — approaching the 700-line threshold; consider splitting mail routes into a separate module (e.g., mail_router.py) on next iteration.",
+    "Mail routes correctly project {'_id': 0} on all reads and remove _id via dict(record) on insert — no ObjectId leakage.",
+    "check-handle returns {available:false, reason} for validation errors (HTTPException caught) but still returns 200 — this is intentional and frontend handles it; minor inconsistency vs claim-handle which returns 400/409, but acceptable.",
+    "Inbound webhook is correctly mounted directly on `app` (not `api_router`) at /api/mail/inbound — multipart, no auth — works through ingress.",
+    "JWT_SECRET is 29 bytes; pyjwt logs InsecureKeyLengthWarning. Non-blocking but should be lengthened to >=32 bytes for prod.",
+    "Compose endpoint uses len(body) as size approximation when a.fileSize unavailable in the React Native side — minor.",
+    "Frontend compose `Alert.alert('Saved to Sent', ...)` on RN-web fires window.alert; on web preview it briefly blocks UI then router.back() runs in finally. Functional, but could be replaced with a non-blocking toast/banner for better UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_wave_mail.py (new)"
+  ],
+  "success_rate": {"backend": "100% (19/19 mail tests)", "frontend": "100% — all 14 reviewer-listed UI flows verified end-to-end"},
+  "seed_data_creation": "Created several disposable test users via /api/auth/verify-otp (phones +1555*, +1666*, +1888*, +1999*) and claimed handles 'alice<ts>' and 'bob<ts>'. One UI user 'tester<ts>@w.xyz' with one Sent email 'TEST_UI_Hello'. Two inbound webhook emails ('TEST_Inbound_Hello' in Bob's inbox). Drop wave_chat.users / emails to clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Wave Mail backend + frontend fully verified Jan 2026. To re-run regression: `pytest /app/backend/tests/test_wave_mail.py -v` (uses unique phones/handles via timestamp so no collisions). Frontend uses these testIDs: handle-input, claim-handle-btn, mail-tab-inbox, mail-tab-sent, compose-fab, my-email-addr, compose-to/subject/body, compose-attach-image, compose-attach-file, compose-send, mail-row-{id}, mail-subject, mail-body, mail-reply, mail-back, mail-not-sent-banner. Auth uses welcome-get-started-btn, phone-input, phone-continue-btn, autofill-otp-btn, otp-verify-btn, profile-name-input, profile-save-btn. SendGrid send remains MOCKED via 'saved_no_provider' until SENDGRID_API_KEY is added; inbound webhook is real and works.",
+  "rca_of_issue": "N/A — no functional bugs found in the Mail feature.",
+  "mocked_apis_observed": [
+    "SendGrid send (no SENDGRID_API_KEY) — compose returns delivery_status='saved_no_provider' and saves to Sent folder only. INTENTIONAL per problem statement; backend gracefully degrades. Frontend correctly shows 'Saved to Sent' alert and surfaces a 'mail-not-sent-banner' on the detail screen with delivery_error text."
+  ]
+}

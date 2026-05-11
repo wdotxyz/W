@@ -1,8 +1,8 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, Header, Request, Form, UploadFile, File
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, logging, uuid, random, json, asyncio
+import os, logging, uuid, random, json, asyncio, re, base64
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Set
@@ -21,6 +21,16 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ.get('JWT_SECRET', 'wave-secret')
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 AI_USER_ID = "ai-assistant-wave"
+MAIL_DOMAIN = os.environ.get('MAIL_DOMAIN', 'w.xyz')
+SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
+MAIL_FROM_DEFAULT = os.environ.get('MAIL_FROM_DEFAULT', f'noreply@{MAIL_DOMAIN}')
+RESERVED_HANDLES = {
+    "admin", "administrator", "root", "support", "help", "info", "contact",
+    "noreply", "no-reply", "postmaster", "abuse", "hostmaster", "webmaster",
+    "mail", "email", "ceo", "legal", "billing", "sales", "security", "team",
+    "wave", "waveai", "ai",
+}
+HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$")
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -347,7 +357,216 @@ async def start_ai_chat(user=Depends(get_current_user)):
     return await _serialize_chat(chat, user["id"])
 
 
-# -------------------- WebSocket --------------------
+# -------------------- Wave Mail --------------------
+class ClaimHandleReq(BaseModel):
+    handle: str
+
+class ComposeMailReq(BaseModel):
+    to: List[str]
+    subject: str = ""
+    body: str = ""
+    attachments: Optional[List[Dict[str, Any]]] = None  # [{filename, content_b64, type}]
+
+
+def _validate_handle(h: str) -> str:
+    h = (h or "").strip().lower()
+    if not HANDLE_RE.match(h):
+        raise HTTPException(400, "Handle must be 3-32 chars, letters/numbers/._- only.")
+    if h in RESERVED_HANDLES:
+        raise HTTPException(400, "That handle is reserved.")
+    return h
+
+
+@api_router.get("/mail/check-handle/{handle}")
+async def check_handle(handle: str, user=Depends(get_current_user)):
+    try:
+        h = _validate_handle(handle)
+    except HTTPException as e:
+        return {"available": False, "reason": e.detail}
+    exists = await db.users.find_one({"email_handle": h, "id": {"$ne": user["id"]}}, {"_id": 0, "id": 1})
+    return {"available": not exists, "handle": h, "address": f"{h}@{MAIL_DOMAIN}"}
+
+
+@api_router.post("/mail/claim-handle")
+async def claim_handle(req: ClaimHandleReq, user=Depends(get_current_user)):
+    h = _validate_handle(req.handle)
+    exists = await db.users.find_one({"email_handle": h, "id": {"$ne": user["id"]}}, {"_id": 0, "id": 1})
+    if exists:
+        raise HTTPException(409, "Handle already taken.")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"email_handle": h, "email_address": f"{h}@{MAIL_DOMAIN}"}})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return fresh
+
+
+@api_router.get("/mail/inbox")
+async def mail_inbox(user=Depends(get_current_user)):
+    addr = user.get("email_address")
+    if not addr:
+        return []
+    msgs = await db.emails.find({"to_addrs": addr.lower(), "folder": "inbox"}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return msgs
+
+
+@api_router.get("/mail/sent")
+async def mail_sent(user=Depends(get_current_user)):
+    msgs = await db.emails.find({"owner_id": user["id"], "folder": "sent"}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return msgs
+
+
+@api_router.get("/mail/{mail_id}")
+async def mail_detail(mail_id: str, user=Depends(get_current_user)):
+    m = await db.emails.find_one({"id": mail_id}, {"_id": 0})
+    if not m:
+        raise HTTPException(404, "Not found")
+    addr = (user.get("email_address") or "").lower()
+    if m.get("owner_id") != user["id"] and addr not in [a.lower() for a in (m.get("to_addrs") or [])]:
+        raise HTTPException(403, "Forbidden")
+    if not m.get("read") and m.get("folder") == "inbox" and addr in [a.lower() for a in (m.get("to_addrs") or [])]:
+        await db.emails.update_one({"id": mail_id}, {"$set": {"read": True}})
+        m["read"] = True
+    return m
+
+
+@api_router.patch("/mail/{mail_id}/read")
+async def mail_mark_read(mail_id: str, user=Depends(get_current_user)):
+    await db.emails.update_one({"id": mail_id}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+@api_router.post("/mail/compose")
+async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
+    if not user.get("email_address"):
+        raise HTTPException(400, "Set up your @w.xyz handle first.")
+    if not req.to or not req.subject and not req.body:
+        raise HTTPException(400, "Recipient and subject/body required.")
+
+    from_addr = user["email_address"]
+    mail_id = str(uuid.uuid4())
+    record = {
+        "id": mail_id,
+        "owner_id": user["id"],
+        "folder": "sent",
+        "from_addr": from_addr,
+        "from_name": user.get("name") or from_addr,
+        "to_addrs": [a.strip().lower() for a in req.to if a.strip()],
+        "subject": req.subject or "(no subject)",
+        "body": req.body or "",
+        "attachments": req.attachments or [],
+        "read": True,
+        "created_at": now_iso(),
+        "delivery_status": "queued",
+        "delivery_error": None,
+    }
+
+    if SENDGRID_API_KEY:
+        try:
+            from sendgrid import SendGridAPIClient
+            from sendgrid.helpers.mail import Mail, Email, To, Content, Attachment, FileContent, FileName, FileType, Disposition
+            msg = Mail(
+                from_email=Email(from_addr, user.get("name") or from_addr),
+                subject=req.subject or "(no subject)",
+                plain_text_content=Content("text/plain", req.body or " "),
+            )
+            for addr in record["to_addrs"]:
+                msg.add_to(To(addr))
+            for a in (req.attachments or []):
+                if a.get("content_b64") and a.get("filename"):
+                    att = Attachment(
+                        FileContent(a["content_b64"]),
+                        FileName(a["filename"]),
+                        FileType(a.get("type") or "application/octet-stream"),
+                        Disposition("attachment"),
+                    )
+                    msg.add_attachment(att)
+            sg = SendGridAPIClient(SENDGRID_API_KEY)
+            resp = sg.send(msg)
+            record["delivery_status"] = "sent" if resp.status_code in (200, 202) else f"error_{resp.status_code}"
+        except Exception as e:
+            logger.exception("SendGrid send failed")
+            record["delivery_status"] = "error"
+            record["delivery_error"] = str(e)[:300]
+    else:
+        record["delivery_status"] = "saved_no_provider"
+        record["delivery_error"] = "SendGrid API key not configured yet; email saved to Sent folder only."
+
+    await db.emails.insert_one(dict(record))
+    return record
+
+
+@app.post("/api/mail/inbound")
+async def mail_inbound(request: Request):
+    """SendGrid Inbound Parse webhook (multipart/form-data, no auth).
+    Stores email for any recipient that matches a user's email_address."""
+    form = await request.form()
+    to_raw = (form.get("to") or "").strip()
+    frm = (form.get("from") or "").strip()
+    subject = (form.get("subject") or "").strip()
+    text = (form.get("text") or "").strip()
+    html = (form.get("html") or "").strip()
+    envelope = form.get("envelope") or "{}"
+    try:
+        env = json.loads(envelope) if isinstance(envelope, str) else {}
+    except Exception:
+        env = {}
+    raw_to = env.get("to") or []
+    if not raw_to:
+        raw_to = [e.strip() for e in re.findall(r"[\w._+-]+@[\w.-]+", to_raw)]
+    to_addrs = [a.lower() for a in raw_to]
+
+    # collect attachments
+    attachments = []
+    n = int(form.get("attachments") or 0)
+    for i in range(1, n + 1):
+        f = form.get(f"attachment{i}")
+        if f and hasattr(f, "read"):
+            data = await f.read() if hasattr(f.read, "__await__") else f.read()
+            try:
+                b64 = base64.b64encode(data).decode("ascii")
+            except Exception:
+                b64 = ""
+            attachments.append({"filename": f.filename, "type": f.content_type, "content_b64": b64, "size": len(data)})
+
+    # find matching user(s) on our domain
+    domain_to = [a for a in to_addrs if a.endswith(f"@{MAIL_DOMAIN}")]
+    if not domain_to:
+        logger.info(f"Inbound mail dropped (no domain match): {to_addrs}")
+        return {"ok": True, "stored": 0}
+
+    sender_match = re.search(r"[\w._+-]+@[\w.-]+", frm or "")
+    sender = sender_match.group(0).lower() if sender_match else frm
+
+    stored = 0
+    for addr in domain_to:
+        owner = await db.users.find_one({"email_address": addr}, {"_id": 0})
+        if not owner:
+            continue
+        rec = {
+            "id": str(uuid.uuid4()),
+            "owner_id": owner["id"],
+            "folder": "inbox",
+            "from_addr": sender,
+            "from_name": frm.split("<")[0].strip().strip('"') if "<" in frm else sender,
+            "to_addrs": to_addrs,
+            "subject": subject or "(no subject)",
+            "body": text or _strip_html(html),
+            "body_html": html,
+            "attachments": attachments,
+            "read": False,
+            "created_at": now_iso(),
+            "delivery_status": "received",
+        }
+        await db.emails.insert_one(dict(rec))
+        stored += 1
+        await ws_manager.send_to_user(owner["id"], {"type": "new_email", "email": rec})
+
+    return {"ok": True, "stored": stored}
+
+
+def _strip_html(s: str) -> str:
+    return re.sub(r"<[^>]+>", "", s or "").strip()
+
+
+
 class WSManager:
     def __init__(self):
         self.connections: Dict[str, Set[WebSocket]] = {}
@@ -440,6 +659,9 @@ async def on_startup():
     await db.chats.create_index("id", unique=True)
     await db.chats.create_index("member_ids")
     await db.messages.create_index([("chat_id", 1), ("created_at", 1)])
+    await db.emails.create_index([("owner_id", 1), ("folder", 1), ("created_at", -1)])
+    await db.emails.create_index("to_addrs")
+    await db.users.create_index("email_handle", sparse=True, unique=True)
     logger.info("Wave backend started.")
 
 
