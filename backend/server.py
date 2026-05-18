@@ -294,7 +294,7 @@ async def _handle_ai_reply(chat_id: str, member_ids: List[str], user_text: str):
             api_key=EMERGENT_LLM_KEY,
             session_id=f"chat-{chat_id}",
             system_message=(
-                "You are Wave AI, a friendly and helpful AI assistant inside the Wave messaging app. "
+                "You are W AI, a friendly and helpful AI assistant inside the W messaging app. "
                 "Reply concisely (1-3 short paragraphs), be warm, helpful, and conversational. Use plain text."
             ),
         ).with_model("anthropic", "claude-sonnet-4-5-20250929")
@@ -312,7 +312,7 @@ async def _handle_ai_reply(chat_id: str, member_ids: List[str], user_text: str):
             "id": str(uuid.uuid4()),
             "chat_id": chat_id,
             "sender_id": AI_USER_ID,
-            "sender_name": "Wave AI",
+            "sender_name": "W AI",
             "type": "text",
             "content": str(reply_text).strip(),
             "duration": None,
@@ -332,7 +332,7 @@ async def _handle_ai_reply(chat_id: str, member_ids: List[str], user_text: str):
             "id": str(uuid.uuid4()),
             "chat_id": chat_id,
             "sender_id": AI_USER_ID,
-            "sender_name": "Wave AI",
+            "sender_name": "W AI",
             "type": "text",
             "content": "Sorry, I couldn't process that right now. Please try again.",
             "duration": None,
@@ -357,7 +357,7 @@ async def start_ai_chat(user=Depends(get_current_user)):
     chat = {
         "id": str(uuid.uuid4()),
         "is_group": False,
-        "name": "Wave AI",
+        "name": "W AI",
         "avatar": None,
         "member_ids": member_ids,
         "created_by": user["id"],
@@ -724,6 +724,82 @@ def _strip_html(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
 
+# -------------------- Status / Updates --------------------
+class StatusReq(BaseModel):
+    type: str = "text"  # text | image
+    content: str  # text body or base64 image
+    background: Optional[str] = None  # hex color for text status
+
+
+@api_router.post("/statuses")
+async def post_status(req: StatusReq, user=Depends(get_current_user)):
+    now = datetime.now(timezone.utc)
+    rec = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "user_name": user.get("name") or user.get("phone"),
+        "user_avatar": user.get("avatar"),
+        "type": req.type,
+        "content": req.content,
+        "background": req.background or "#0B3B60",
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=24)).isoformat(),
+        "viewed_by": [],
+    }
+    await db.statuses.insert_one(dict(rec))
+    return rec
+
+
+@api_router.get("/statuses")
+async def list_statuses(user=Depends(get_current_user)):
+    now_s = datetime.now(timezone.utc).isoformat()
+    cursor = db.statuses.find({"expires_at": {"$gt": now_s}}, {"_id": 0}).sort("created_at", -1)
+    items = await cursor.to_list(500)
+    # Group by user_id; my status separately
+    mine: List[dict] = []
+    grouped: Dict[str, List[dict]] = {}
+    for s in items:
+        if s["user_id"] == user["id"]:
+            mine.append(s)
+        else:
+            grouped.setdefault(s["user_id"], []).append(s)
+    contacts = []
+    for uid, lst in grouped.items():
+        lst.sort(key=lambda x: x["created_at"], reverse=True)
+        viewed = all(user["id"] in (s.get("viewed_by") or []) for s in lst)
+        contacts.append({
+            "user_id": uid,
+            "user_name": lst[0]["user_name"],
+            "user_avatar": lst[0]["user_avatar"],
+            "latest": lst[0],
+            "count": len(lst),
+            "all_viewed": viewed,
+        })
+    contacts.sort(key=lambda c: c["latest"]["created_at"], reverse=True)
+    return {"my_statuses": mine, "contacts": contacts}
+
+
+@api_router.get("/statuses/{user_id}")
+async def user_statuses(user_id: str, user=Depends(get_current_user)):
+    now_s = datetime.now(timezone.utc).isoformat()
+    items = await db.statuses.find({"user_id": user_id, "expires_at": {"$gt": now_s}}, {"_id": 0}).sort("created_at", 1).to_list(50)
+    # mark as viewed
+    if user_id != user["id"]:
+        await db.statuses.update_many(
+            {"user_id": user_id, "expires_at": {"$gt": now_s}, "viewed_by": {"$ne": user["id"]}},
+            {"$addToSet": {"viewed_by": user["id"]}},
+        )
+    return items
+
+
+@api_router.delete("/statuses/{status_id}")
+async def delete_status(status_id: str, user=Depends(get_current_user)):
+    r = await db.statuses.delete_one({"id": status_id, "user_id": user["id"]})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
 def _sanitize_html(s: str) -> str:
     """Basic HTML sanitization — strip scripts/iframes/on* handlers/javascript URLs.
     Not bulletproof but blocks the obvious XSS for our internal renderer.
@@ -808,7 +884,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = ""):
 # -------------------- Health --------------------
 @api_router.get("/")
 async def root():
-    return {"app": "Wave", "status": "ok"}
+    return {"app": "W", "status": "ok"}
 
 
 # -------------------- Startup --------------------
@@ -820,7 +896,7 @@ async def on_startup():
         await db.users.insert_one({
             "id": AI_USER_ID,
             "phone": "+0000000000",
-            "name": "Wave AI",
+            "name": "W AI",
             "avatar": "https://static.prod-images.emergentagent.com/jobs/0a6fb986-57f6-4143-b026-cc3c8d533f4c/images/d2f56f77cf3edfad4a9352fce5f4beb25e8482a5ae9b951ace5b84f1d947d0f9.png",
             "about": "Your AI-native assistant. Ask me anything!",
             "created_at": now_iso(),
@@ -837,7 +913,11 @@ async def on_startup():
     await db.emails.create_index([("owner_id", 1), ("folder", 1), ("created_at", -1)])
     await db.emails.create_index("to_addrs")
     await db.users.create_index("email_handle", sparse=True, unique=True)
-    logger.info("Wave backend started.")
+    await db.emails.create_index("thread_id", sparse=True)
+    await db.emails.create_index("message_id", sparse=True)
+    await db.statuses.create_index([("user_id", 1), ("created_at", -1)])
+    await db.statuses.create_index("expires_at")
+    logger.info("W backend started.")
 
 
 @app.on_event("shutdown")

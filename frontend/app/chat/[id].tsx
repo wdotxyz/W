@@ -179,7 +179,7 @@ export default function ChatScreen() {
                 style={styles.input}
                 value={text}
                 onChangeText={onTyping}
-                placeholder={isAi ? "Ask Wave AI anything…" : "Message"}
+                placeholder={isAi ? "Ask W AI anything…" : "Message"}
                 placeholderTextColor={colors.textMuted}
                 multiline
                 testID="message-input"

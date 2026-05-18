@@ -79,7 +79,7 @@ export default function NotificationSettings() {
         </Section>
 
         <Text style={styles.footer}>
-          Wave shows in-app banners and plays a soft tone when a message arrives while you're using the app. Push notifications (closed app) are coming soon.
+          W shows in-app banners and plays a soft tone when a message arrives while you're using the app. Push notifications (closed app) are coming soon.
         </Text>
       </ScrollView>
     </SafeAreaView>

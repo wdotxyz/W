@@ -41,9 +41,9 @@ export default function SettingsScreen() {
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
           <Row icon="lock-closed" label="Privacy" />
-          <Row icon="color-palette" label="Theme" hint="Wave" />
+          <Row icon="color-palette" label="Theme" hint="W" />
           <Row icon="help-circle" label="Help & Support" />
-          <Row icon="information-circle" label="About Wave" hint="v1.0" />
+          <Row icon="information-circle" label="About W" hint="v1.0" />
         </View>
 
         <TouchableOpacity onPress={onSignOut} style={styles.signOut} testID="signout-btn">

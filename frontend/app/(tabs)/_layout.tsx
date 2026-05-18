@@ -32,17 +32,17 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="updates"
+        options={{
+          title: "Updates",
+          tabBarIcon: ({ color, size }) => <Ionicons name="radio" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="mail"
         options={{
           title: "Mail",
           tabBarIcon: ({ color, size }) => <Ionicons name="mail" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="calls"
-        options={{
-          title: "Calls",
-          tabBarIcon: ({ color, size }) => <Ionicons name="call" size={size} color={color} />,
         }}
       />
       <Tabs.Screen

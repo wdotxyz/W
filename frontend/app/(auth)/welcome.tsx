@@ -17,13 +17,13 @@ export default function Welcome() {
           <View style={styles.logoCircle}>
             <Ionicons name="chatbubbles" size={42} color="#fff" />
           </View>
-          <Text style={styles.brand}>Wave</Text>
+          <Text style={styles.brand}>W</Text>
           <Text style={styles.tag}>Messaging that flows. AI-native.</Text>
         </View>
 
         <View style={styles.bullets}>
           <Bullet icon="lock-closed" text="End-to-end private chats" />
-          <Bullet icon="sparkles" text="Built-in Wave AI assistant" />
+          <Bullet icon="sparkles" text="Built-in W AI assistant" />
           <Bullet icon="mic" text="Voice notes, photos & groups" />
         </View>
 
@@ -36,7 +36,7 @@ export default function Welcome() {
           <Text style={styles.ctaText}>Get started</Text>
           <Ionicons name="arrow-forward" size={20} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.legal}>By continuing you agree to Wave Terms & Privacy.</Text>
+        <Text style={styles.legal}>By continuing you agree to W Terms & Privacy.</Text>
       </View>
     </ImageBackground>
   );

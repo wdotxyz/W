@@ -17,6 +17,7 @@ export default function ChatsScreen() {
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [segment, setSegment] = useState<"chats" | "calls">("chats");
 
   const load = useCallback(async () => {
     try {
@@ -48,7 +49,7 @@ export default function ChatsScreen() {
     const isAi = item.member_ids?.includes(AI_USER_ID);
     const last = item.last_message;
     const lastText = !last
-      ? (isAi ? "Tap to chat with Wave AI" : "Say hi 👋")
+      ? (isAi ? "Tap to chat with W AI" : "Say hi 👋")
       : last.type === "image" ? "📷 Photo"
       : last.type === "voice" ? "🎤 Voice note"
       : last.content;
@@ -83,7 +84,7 @@ export default function ChatsScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.brand}>Wave</Text>
+          <Text style={styles.brand}>W</Text>
           <Text style={styles.welcome}>Hi {user?.name?.split(" ")[0] || "there"} 👋</Text>
         </View>
         <View style={styles.headerActions}>
@@ -96,8 +97,32 @@ export default function ChatsScreen() {
         </View>
       </View>
 
+      <View style={styles.segRow}>
+        <TouchableOpacity
+          onPress={() => setSegment("chats")}
+          style={[styles.segBtn, segment === "chats" && styles.segBtnOn]}
+          testID="seg-chats"
+        >
+          <Ionicons name="chatbubble" size={14} color={segment === "chats" ? "#fff" : colors.textMuted} />
+          <Text style={[styles.segText, segment === "chats" && styles.segTextOn]}>Chats</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setSegment("calls")}
+          style={[styles.segBtn, segment === "calls" && styles.segBtnOn]}
+          testID="seg-calls"
+        >
+          <Ionicons name="call" size={14} color={segment === "calls" ? "#fff" : colors.textMuted} />
+          <Text style={[styles.segText, segment === "calls" && styles.segTextOn]}>Calls</Text>
+        </TouchableOpacity>
+      </View>
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
+      ) : segment === "calls" ? (
+        <View style={styles.empty}>
+          <Ionicons name="call-outline" size={48} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>No calls yet</Text>
+          <Text style={styles.emptySub}>Voice & video calls coming soon. They'll appear here.</Text>
+        </View>
       ) : (
         <FlatList
           data={chats}
@@ -170,4 +195,9 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginTop: 12 },
   emptySub: { color: colors.textMuted, marginTop: 4, textAlign: "center" },
   aiDot: { position: "absolute", bottom: -2, right: -2, backgroundColor: colors.accentGlow, borderWidth: 2, borderColor: "#fff", alignItems: "center", justifyContent: "center" },
+  segRow: { flexDirection: "row", gap: 8, paddingHorizontal: space.xl, marginBottom: 4 },
+  segBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.surface2 },
+  segBtnOn: { backgroundColor: colors.primary },
+  segText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
+  segTextOn: { color: "#fff" },
 });

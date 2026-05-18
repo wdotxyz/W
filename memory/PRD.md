@@ -1,7 +1,25 @@
-# Wave - WhatsApp Clone PRD
+# W - WhatsApp Clone PRD
 
 ## Vision
-**Wave** — an AI-native messaging app with an ocean-inspired teal/blue aesthetic. WhatsApp-class chat experience plus a built-in AI assistant available in every conversation.
+**W** — an AI-native messaging app with an ocean-inspired teal/blue aesthetic. WhatsApp-class chat experience plus built-in AI assistant, real webmail on @w.xyz, and a Status/Updates feed.
+
+## Stack
+- **Frontend**: Expo SDK 54, React Native, Expo Router (file-based), AsyncStorage, expo-image-picker, expo-audio, expo-file-system, expo-document-picker
+- **Backend**: FastAPI + MongoDB (motor), JWT auth, WebSockets for realtime
+- **AI**: Claude Sonnet 4.5 via emergentintegrations + EMERGENT_LLM_KEY
+- **Mail**: SendGrid v3 send API + Inbound Parse webhook
+
+## Implemented Features (MVP)
+- Phone + OTP auth (DEV MODE — OTP returned in API + autofilled in UI)
+- Profile setup (name + base64 avatar)
+- **Tab nav: Chats · Updates · Mail · Settings** (4 tabs)
+- **Chats tab** has internal segment toggle (Chats / Calls) — calls placeholder accessible without leaving the tab
+- 1-on-1 chats, Group chats, real-time WS messaging, text/image/voice notes, typing indicators
+- **W AI** assistant (Claude Sonnet 4.5) auto-pinned and reply-on-mention in any chat
+- **Updates** (WhatsApp Status-style): post text with color background OR photo, 24h auto-expiry, ringed avatar grid, full-screen story-style viewer with auto-advance + tap navigation, mark-as-viewed
+- **W Mail** (@w.xyz webmail): handle picker, Inbox/Drafts/Sent + Search, full-screen compose with auto-save drafts + attachments, HTML rendering (sanitized), threading by Message-ID / In-Reply-To, signatures, real send + receive via SendGrid (mocked w/o key)
+- Notification settings (mute, sounds, preview, vibration) + in-app banner with chime
+- Sign out
 
 ## Stack
 - **Frontend**: Expo SDK 54, React Native, Expo Router (file-based), AsyncStorage, expo-image-picker, expo-audio, expo-file-system

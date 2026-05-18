@@ -42,7 +42,7 @@ export default function SignatureScreen() {
           style={styles.area}
           value={sig}
           onChangeText={setSig}
-          placeholder={"e.g. — Jonny\nFounder, Wave"}
+          placeholder={"e.g. — Jonny\nFounder, W"}
           placeholderTextColor={colors.textMuted}
           multiline
           textAlignVertical="top"
