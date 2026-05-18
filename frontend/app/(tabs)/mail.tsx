@@ -248,7 +248,7 @@ const HandlePicker = ({ onClaimed }: { onClaimed: (u: any) => void }) => {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: space.xl, paddingVertical: space.md, flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { fontSize: 30, fontWeight: "800", color: colors.primary, letterSpacing: -0.5 },
+  title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   addr: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
   iconBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center" },
   composeFab: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },

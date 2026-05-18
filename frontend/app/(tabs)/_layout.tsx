@@ -25,17 +25,10 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="chats"
-        options={{
-          title: "Chats",
-          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
         name="updates"
         options={{
-          title: "Updates",
-          tabBarIcon: ({ color, size }) => <Ionicons name="radio" size={size} color={color} />,
+          title: "Watch",
+          tabBarIcon: ({ color, size }) => <Ionicons name="play-circle" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -43,6 +36,13 @@ export default function TabsLayout() {
         options={{
           title: "Mail",
           tabBarIcon: ({ color, size }) => <Ionicons name="mail" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          title: "Chats",
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
         }}
       />
       <Tabs.Screen

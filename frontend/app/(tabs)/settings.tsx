@@ -66,7 +66,7 @@ const Row = ({ icon, label, hint, onPress, testID }: any) => (
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
-  title: { fontSize: 30, fontWeight: "800", color: colors.primary, letterSpacing: -0.5, padding: space.xl },
+  title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5, padding: space.xl },
   profileCard: { flexDirection: "row", alignItems: "center", marginHorizontal: space.xl, padding: 16, backgroundColor: colors.surface2, borderRadius: radius.xl },
   name: { fontSize: 18, fontWeight: "800", color: colors.text },
   phone: { fontSize: 13, color: colors.textMuted, marginTop: 2 },

@@ -55,7 +55,7 @@ export default function UpdatesScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Updates</Text>
+        <Text style={styles.title}>Watch</Text>
       </View>
 
       {loading ? (
@@ -238,7 +238,7 @@ function timeAgo(iso: string) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   header: { padding: space.xl, paddingBottom: space.md },
-  title: { fontSize: 30, fontWeight: "800", color: colors.primary, letterSpacing: -0.5 },
+  title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   section: { paddingHorizontal: space.xl, paddingTop: 16, paddingBottom: 8, color: colors.textMuted, fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: space.xl, paddingVertical: 10 },
   avatarWrap: { position: "relative", width: 64, height: 64, alignItems: "center", justifyContent: "center" },

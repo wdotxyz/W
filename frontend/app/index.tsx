@@ -15,7 +15,7 @@ export default function Index() {
   }
   if (!user) return <Redirect href="/(auth)/welcome" />;
   if (!user.name) return <Redirect href="/(auth)/profile-setup" />;
-  return <Redirect href="/(tabs)/chats" />;
+  return <Redirect href="/(tabs)/updates" />;
 }
 
 const styles = StyleSheet.create({
