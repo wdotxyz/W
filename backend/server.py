@@ -30,7 +30,7 @@ RESERVED_HANDLES = {
     "mail", "email", "ceo", "legal", "billing", "sales", "security", "team",
     "wave", "waveai", "ai",
 }
-HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$")
+HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,24}[a-z0-9]$")
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -393,7 +393,7 @@ class DraftReq(BaseModel):
 def _validate_handle(h: str) -> str:
     h = (h or "").strip().lower()
     if not HANDLE_RE.match(h):
-        raise HTTPException(400, "Handle must be 3-32 chars, letters/numbers/._- only.")
+        raise HTTPException(400, "3–26 chars, letters/numbers/dashes only (no periods).")
     if h in RESERVED_HANDLES:
         raise HTTPException(400, "That handle is reserved.")
     return h

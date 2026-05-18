@@ -11,14 +11,14 @@ import { colors, radius, space } from "../../src/theme";
 
 export default function PhoneScreen() {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
   const [usernameStatus, setUsernameStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean }>({});
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("+1");
   const [loading, setLoading] = useState(false);
 
-  // Debounced username availability check
   useEffect(() => {
     if (username.length < 3) { setUsernameStatus({}); return; }
     setUsernameStatus({ checking: true });
@@ -31,7 +31,8 @@ export default function PhoneScreen() {
     return () => clearTimeout(t);
   }, [username]);
 
-  const isValid = name.trim().length >= 2 && phone.length >= 6 && usernameStatus.available === true;
+  const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+  const isValid = firstName.trim().length >= 2 && phone.length >= 6 && usernameStatus.available === true;
 
   const onContinue = async () => {
     if (!isValid) return;
@@ -44,7 +45,7 @@ export default function PhoneScreen() {
       });
       router.push({
         pathname: "/(auth)/otp",
-        params: { phone: full, devOtp: res.dev_otp, name: name.trim(), username: username.trim() },
+        params: { phone: full, devOtp: res.dev_otp, name: fullName, username: username.trim() },
       });
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to send OTP");
@@ -63,22 +64,36 @@ export default function PhoneScreen() {
           <Text style={styles.title}>Create your account</Text>
           <Text style={styles.sub}>Tell us who you are and pick a unique @w.xyz username.</Text>
 
-          {/* NAME */}
+          {/* NAME — first + last */}
           <Text style={styles.label}>Name</Text>
-          <View style={styles.inputBox}>
-            <TextInput
-              style={styles.input}
-              placeholder="Your full name"
-              placeholderTextColor={colors.textMuted}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              maxLength={40}
-              testID="signup-name-input"
-            />
+          <View style={styles.nameRow}>
+            <View style={[styles.inputBox, { flex: 1 }]}>
+              <TextInput
+                style={styles.input}
+                placeholder="First name"
+                placeholderTextColor={colors.textMuted}
+                value={firstName}
+                onChangeText={setFirstName}
+                autoCapitalize="words"
+                maxLength={30}
+                testID="signup-firstname-input"
+              />
+            </View>
+            <View style={[styles.inputBox, { flex: 1 }]}>
+              <TextInput
+                style={styles.input}
+                placeholder="Last (optional)"
+                placeholderTextColor={colors.textMuted}
+                value={lastName}
+                onChangeText={setLastName}
+                autoCapitalize="words"
+                maxLength={30}
+                testID="signup-lastname-input"
+              />
+            </View>
           </View>
 
-          {/* USERNAME with availability */}
+          {/* USERNAME */}
           <Text style={styles.label}>Username</Text>
           <View style={styles.handleRow}>
             <TextInput
@@ -86,9 +101,10 @@ export default function PhoneScreen() {
               placeholder="yourhandle"
               placeholderTextColor={colors.textMuted}
               value={username}
-              onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 32))}
+              onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 26))}
               autoCapitalize="none"
               autoCorrect={false}
+              maxLength={26}
               testID="signup-username-input"
             />
             <Text style={styles.domain}>@w.xyz</Text>
@@ -97,13 +113,13 @@ export default function PhoneScreen() {
             {usernameStatus.checking ? (
               <><ActivityIndicator size="small" color={colors.textMuted} /><Text style={styles.statusText}>Checking…</Text></>
             ) : usernameStatus.available === true ? (
-              <><Ionicons name="checkmark-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>Available</Text></>
+              <><Ionicons name="checkmark-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>Available · {username.length}/26</Text></>
             ) : usernameStatus.available === false ? (
               <><Ionicons name="close-circle" size={16} color={colors.danger} /><Text style={[styles.statusText, { color: colors.danger }]}>{usernameStatus.reason || "Taken"}</Text></>
             ) : username.length > 0 && username.length < 3 ? (
-              <Text style={styles.statusText}>At least 3 characters</Text>
+              <Text style={styles.statusText}>At least 3 characters · {username.length}/26</Text>
             ) : (
-              <Text style={styles.statusText}>3–32 characters, letters/numbers/._-</Text>
+              <Text style={styles.statusText}>3–26 characters, letters/numbers/dashes only</Text>
             )}
           </View>
 
@@ -133,6 +149,17 @@ export default function PhoneScreen() {
             </View>
           </View>
           <Text style={styles.hint}>Dev mode: OTP will be shown on the next screen.</Text>
+
+          {/* Sign-in link for returning users */}
+          <TouchableOpacity
+            style={styles.signinRow}
+            onPress={() => router.push("/(auth)/signin")}
+            testID="goto-signin-btn"
+            activeOpacity={0.7}
+          >
+            <Text style={styles.signinText}>Already have an account? </Text>
+            <Text style={styles.signinLink}>Sign in</Text>
+          </TouchableOpacity>
         </ScrollView>
         <TouchableOpacity
           style={[styles.cta, (loading || !isValid) && { opacity: 0.5 }]}
@@ -155,6 +182,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   sub: { fontSize: 14, color: colors.textMuted, marginTop: 6, marginBottom: 18, lineHeight: 20 },
   label: { fontSize: 12, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 16, marginBottom: 8 },
+  nameRow: { flexDirection: "row", gap: 10 },
   inputBox: { backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
   input: { fontSize: 16, color: colors.text, paddingVertical: 14 },
   handleRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
@@ -168,6 +196,9 @@ const styles = StyleSheet.create({
   phoneBox: { flex: 1, backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
   phoneInput: { fontSize: 16, color: colors.text, paddingVertical: 14, fontWeight: "500" },
   hint: { color: colors.textMuted, fontSize: 12, marginTop: 10 },
+  signinRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 28, padding: 8 },
+  signinText: { color: colors.textMuted, fontSize: 14 },
+  signinLink: { color: colors.accent, fontSize: 14, fontWeight: "800" },
   cta: { backgroundColor: colors.primary, padding: 16, borderRadius: radius.xl, alignItems: "center" },
   ctaText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
