@@ -11,7 +11,7 @@ import { colors, radius, space } from "../../src/theme";
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { phone, devOtp } = useLocalSearchParams<{ phone: string; devOtp?: string }>();
+  const { phone, devOtp, name: signupName, username: signupUsername } = useLocalSearchParams<{ phone: string; devOtp?: string; name?: string; username?: string }>();
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
@@ -25,9 +25,27 @@ export default function OtpScreen() {
         body: JSON.stringify({ phone, otp }),
       });
       await setToken(res.token);
-      setUser(res.user);
-      if (!res.user.name) router.replace("/(auth)/profile-setup");
-      else router.replace("/(tabs)/chats");
+      let user = res.user;
+      // Apply name + claim handle if provided from signup form
+      if (signupName && !user.name) {
+        try {
+          user = await api<any>("/auth/profile", {
+            method: "POST",
+            body: JSON.stringify({ name: signupName, avatar: null }),
+          });
+        } catch {}
+      }
+      if (signupUsername && !user.email_handle) {
+        try {
+          user = await api<any>("/mail/claim-handle", {
+            method: "POST",
+            body: JSON.stringify({ handle: signupUsername }),
+          });
+        } catch {}
+      }
+      setUser(user);
+      if (!user.name) router.replace("/(auth)/profile-setup");
+      else router.replace("/(tabs)/updates");
     } catch (e: any) {
       Alert.alert("Invalid OTP", "Please check the code and try again.");
     } finally {

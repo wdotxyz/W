@@ -400,12 +400,12 @@ def _validate_handle(h: str) -> str:
 
 
 @api_router.get("/mail/check-handle/{handle}")
-async def check_handle(handle: str, user=Depends(get_current_user)):
+async def check_handle(handle: str, authorization: Optional[str] = Header(None)):
     try:
         h = _validate_handle(handle)
     except HTTPException as e:
         return {"available": False, "reason": e.detail}
-    exists = await db.users.find_one({"email_handle": h, "id": {"$ne": user["id"]}}, {"_id": 0, "id": 1})
+    exists = await db.users.find_one({"email_handle": h}, {"_id": 0, "id": 1})
     return {"available": not exists, "handle": h, "address": f"{h}@{MAIL_DOMAIN}"}
 
 
