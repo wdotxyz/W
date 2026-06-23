@@ -24,6 +24,9 @@ AI_USER_ID = "ai-assistant-wave"
 MAIL_DOMAIN = os.environ.get('MAIL_DOMAIN', 'w.xyz')
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 MAIL_FROM_DEFAULT = os.environ.get('MAIL_FROM_DEFAULT', f'noreply@{MAIL_DOMAIN}')
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
+TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')
 RESERVED_HANDLES = {
     "admin", "administrator", "root", "support", "help", "info", "contact",
     "noreply", "no-reply", "postmaster", "abuse", "hostmaster", "webmaster",
@@ -104,12 +107,38 @@ async def get_current_user(authorization: str = Header(None)) -> Dict[str, Any]:
 @api_router.post("/auth/send-otp")
 async def send_otp(req: SendOtpReq):
     otp = f"{random.randint(0, 999999):06d}"
-    # DEV MODE: store and return OTP. In production use Twilio.
     await db.otps.update_one(
         {"phone": req.phone},
         {"$set": {"phone": req.phone, "otp": otp, "created_at": now_iso()}},
         upsert=True,
     )
+    twilio_configured = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER)
+    if twilio_configured:
+        try:
+            from twilio.rest import Client
+            from twilio.base.exceptions import TwilioRestException
+            client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+            client.messages.create(
+                to=req.phone,
+                from_=TWILIO_PHONE_NUMBER,
+                body=f"Your W code is {otp}. Valid for 10 minutes. Don't share it.",
+            )
+            logger.info(f"[TWILIO] OTP sent to {req.phone}")
+            return {"success": True, "message": "OTP sent via SMS"}
+        except TwilioRestException as e:
+            logger.exception(f"Twilio send failed: {e}")
+            # Trial accounts can only send to verified numbers — fall back to dev mode for those
+            if e.code == 21608 or "unverified" in str(e).lower():
+                return {
+                    "success": True,
+                    "dev_otp": otp,
+                    "message": "Twilio trial: number not verified. Showing dev OTP. Verify the number in Twilio Console or upgrade.",
+                }
+            raise HTTPException(400, f"SMS failed: {e.msg or str(e)}")
+        except Exception as e:
+            logger.exception(f"Twilio error: {e}")
+            raise HTTPException(500, "Failed to send SMS")
+    # Dev mode fallback
     logger.info(f"[DEV OTP] {req.phone} -> {otp}")
     return {"success": True, "dev_otp": otp, "message": "OTP sent (dev mode)"}
 
