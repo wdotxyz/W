@@ -76,7 +76,6 @@ export default function SignInScreen() {
           {/* Sign-in form */}
           <View style={styles.formCard}>
             <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.sub}>Use your @w.xyz address and password.</Text>
 
             <Text style={styles.label}>Email</Text>
             <View style={styles.inputBox}>
@@ -141,7 +140,7 @@ export default function SignInScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={{ flex: 1, minHeight: 24 }} />
+          <View style={{ height: 28 }} />
 
           {/* Create account — always reachable via scroll */}
           <View style={styles.bottomWrap}>
@@ -183,8 +182,7 @@ const styles = StyleSheet.create({
   tag: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
 
   formCard: { marginTop: 8 },
-  title: { fontSize: 22, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
-  sub: { fontSize: 14, color: colors.textMuted, marginTop: 6, marginBottom: 16, lineHeight: 20 },
+  title: { fontSize: 22, fontWeight: "800", color: colors.text, letterSpacing: -0.3, marginBottom: 14 },
   label: { fontSize: 12, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 12, marginBottom: 8 },
 
   inputBox: {
