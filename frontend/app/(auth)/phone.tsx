@@ -14,7 +14,7 @@ export default function PhoneScreen() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
-  const [usernameStatus, setUsernameStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean }>({});
+  const [usernameStatus, setUsernameStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean; tier?: "free" | "premium" | "unavailable" }>({});
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("+1");
   const [password, setPassword] = useState("");
@@ -22,12 +22,12 @@ export default function PhoneScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (username.length < 3) { setUsernameStatus({}); return; }
+    if (username.length < 1) { setUsernameStatus({}); return; }
     setUsernameStatus({ checking: true });
     const t = setTimeout(async () => {
       try {
         const res = await api<any>(`/mail/check-handle/${encodeURIComponent(username)}`);
-        setUsernameStatus({ available: res.available, reason: res.reason });
+        setUsernameStatus({ available: res.available, reason: res.reason, tier: res.tier });
       } catch { setUsernameStatus({}); }
     }, 350);
     return () => clearTimeout(t);
@@ -35,7 +35,7 @@ export default function PhoneScreen() {
 
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
   const pwdStrong = password.length >= 8 && /[0-9\W_]/.test(password);
-  const isValid = firstName.trim().length >= 2 && phone.length >= 6 && usernameStatus.available === true && pwdStrong;
+  const isValid = firstName.trim().length >= 2 && lastName.trim().length >= 1 && phone.length >= 6 && usernameStatus.available === true && usernameStatus.tier === "free" && pwdStrong;
 
   const onContinue = async () => {
     if (!isValid) return;
@@ -85,7 +85,7 @@ export default function PhoneScreen() {
             <View style={[styles.inputBox, { flex: 1 }]}>
               <TextInput
                 style={styles.input}
-                placeholder="Last (optional)"
+                placeholder="Last name"
                 placeholderTextColor={colors.textMuted}
                 value={lastName}
                 onChangeText={setLastName}
@@ -115,14 +115,18 @@ export default function PhoneScreen() {
           <View style={styles.statusRow} testID="username-status">
             {usernameStatus.checking ? (
               <><ActivityIndicator size="small" color={colors.textMuted} /><Text style={styles.statusText}>Checking…</Text></>
+            ) : usernameStatus.tier === "unavailable" ? (
+              <><Ionicons name="close-circle" size={16} color={colors.danger} /><Text style={[styles.statusText, { color: colors.danger }]}>{usernameStatus.reason || "Not available"}</Text></>
+            ) : usernameStatus.available === true && usernameStatus.tier === "premium" ? (
+              <><Ionicons name="star" size={16} color="#E07B00" /><Text style={[styles.statusText, { color: "#E07B00" }]}>Premium handle — subscription required</Text></>
             ) : usernameStatus.available === true ? (
               <><Ionicons name="checkmark-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>Available · {username.length}/26</Text></>
             ) : usernameStatus.available === false ? (
               <><Ionicons name="close-circle" size={16} color={colors.danger} /><Text style={[styles.statusText, { color: colors.danger }]}>{usernameStatus.reason || "Taken"}</Text></>
-            ) : username.length > 0 && username.length < 3 ? (
-              <Text style={styles.statusText}>At least 3 characters · {username.length}/26</Text>
+            ) : username.length > 0 && username.length < 4 ? (
+              <Text style={styles.statusText}>Handles under 4 characters aren&apos;t available</Text>
             ) : (
-              <Text style={styles.statusText}>3–26 characters, letters/numbers/dashes only</Text>
+              <Text style={styles.statusText}>6–26 characters. 4–5 are premium · letters, numbers, dashes</Text>
             )}
           </View>
 

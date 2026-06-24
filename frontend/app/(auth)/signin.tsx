@@ -37,10 +37,22 @@ export default function SignInScreen() {
     const fullEmail = normalizeEmail(email);
     setLoading(true);
     try {
-      const res = await api<{ token: string; user: any }>("/auth/login", {
+      const res: any = await api("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email: fullEmail, password }),
       });
+      if (res?.requires_2fa) {
+        router.push({
+          pathname: "/(auth)/two-factor",
+          params: {
+            email: fullEmail,
+            password,
+            phoneMasked: res.phone_masked || "",
+            devOtp: res.dev_otp || "",
+          },
+        });
+        return;
+      }
       await applySession(res.token, res.user);
       router.replace("/(tabs)/updates");
     } catch (e: any) {
@@ -101,7 +113,7 @@ export default function SignInScreen() {
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Your password"
+                placeholder="Password"
                 placeholderTextColor={colors.textMuted}
                 secureTextEntry={!showPwd}
                 autoCapitalize="none"
@@ -177,8 +189,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 24, flexGrow: 1, minHeight: "100%" as any },
 
-  brandWrap: { alignItems: "center", marginTop: 24, marginBottom: 28 },
-  brandLogo: { width: 110, height: 110, marginBottom: 12 },
+  brandWrap: { alignItems: "center", marginTop: 12, marginBottom: 20 },
+  brandLogo: { width: 72, height: 72, marginBottom: 10 },
   tag: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
 
   formCard: { marginTop: 8 },

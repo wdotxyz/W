@@ -33,7 +33,13 @@ RESERVED_HANDLES = {
     "mail", "email", "ceo", "legal", "billing", "sales", "security", "team",
     "wave", "waveai", "ai",
 }
-HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,24}[a-z0-9]$")
+HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,24}[a-z0-9]$|^[a-z0-9]$")
+
+# Handle pricing tiers
+HANDLE_PREMIUM_MIN = 4   # 4–5 chars require premium subscription
+HANDLE_FREE_MIN = 6      # 6–26 chars are free
+HANDLE_MAX = 26
+HANDLE_HARD_MIN = 4      # Anything below this is not available at all
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -55,6 +61,13 @@ class VerifyOtpReq(BaseModel):
 class LoginReq(BaseModel):
     email: str
     password: str
+    otp: Optional[str] = None  # required when account has 2FA enabled
+
+
+class TwoFactorToggleReq(BaseModel):
+    enable: bool
+    password: str
+    otp: Optional[str] = None  # required only when disabling 2FA
 
 
 class SetPasswordReq(BaseModel):
@@ -261,22 +274,61 @@ async def verify_otp(req: VerifyOtpReq):
     return {"token": token, "user": user, "is_new": is_new, "reactivated": reactivated}
 
 
+def _mask_phone(phone: str) -> str:
+    """Return e.g. '+1 ••• ••• 1234'."""
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) < 4:
+        return phone
+    last = digits[-4:]
+    return f"{phone[:phone.index(digits[0])]}••• ••• {last}"
+
+
+async def _send_2fa_otp(user: dict, purpose: str = "login"):
+    """Send a 2FA OTP to the user's phone. Returns dev_otp when Twilio is unavailable."""
+    if not user.get("phone"):
+        return None
+    otp = f"{random.randint(0, 999999):06d}"
+    await db.otps.update_one(
+        {"phone": user["phone"]},
+        {"$set": {"phone": user["phone"], "otp": otp, "created_at": now_iso(), "purpose": purpose}},
+        upsert=True,
+    )
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
+        try:
+            from twilio.rest import Client as _Twilio
+            _Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).messages.create(
+                to=user["phone"], from_=TWILIO_PHONE_NUMBER,
+                body=f"Your W verification code is {otp}. Valid for 10 minutes.",
+            )
+            return None
+        except Exception as e:
+            logger.warning(f"Twilio 2FA SMS failed: {e}")
+            return otp
+    return otp
+
+
 @api_router.post("/auth/login")
 async def login(req: LoginReq):
-    """Email + password login. Generic 401 on any failure (no enumeration)."""
+    """Email + password login with optional 2-step phone OTP.
+
+    Flow:
+    - 2FA OFF → returns {token, user, ...} immediately.
+    - 2FA ON, no otp supplied → sends OTP to phone, returns
+      {requires_2fa: true, phone_masked, dev_otp?}.
+    - 2FA ON, otp supplied → verifies password + OTP, returns {token, user, ...}.
+    """
     email = (req.email or "").strip().lower()
     if not email or "@" not in email:
-        # Still keep timing constant
         verify_password(req.password or "", _DUMMY_HASH)
         raise HTTPException(401, GENERIC_AUTH_ERROR)
     user = await db.users.find_one({"email_address": email}, {"_id": 0})
     if not user:
         verify_password(req.password or "", _DUMMY_HASH)
         raise HTTPException(401, GENERIC_AUTH_ERROR)
-    # Deactivated → block login (they must reactivate via phone OTP)
     if user.get("deactivated"):
         raise HTTPException(401, GENERIC_AUTH_ERROR)
-    # Lockout check
     lock_until = _parse_dt(user.get("lock_until"))
     if lock_until and lock_until > _utcnow():
         raise HTTPException(429, "Account temporarily locked. Try again in a few minutes.")
@@ -284,31 +336,83 @@ async def login(req: LoginReq):
     if not pw_hash:
         verify_password(req.password or "", _DUMMY_HASH)
         raise HTTPException(401, GENERIC_AUTH_ERROR)
+    if not verify_password(req.password, pw_hash):
+        # Bump failed-login counter & maybe lock
+        now = _utcnow()
+        window_start = _parse_dt(user.get("failed_login_window_started_at"))
+        failed = int(user.get("failed_logins", 0))
+        if not window_start or (now - window_start).total_seconds() > FAILED_LOGIN_WINDOW_MINUTES * 60:
+            failed = 1
+            window_start = now
+        else:
+            failed += 1
+        update = {"failed_logins": failed, "failed_login_window_started_at": window_start.isoformat()}
+        if failed >= FAILED_LOGIN_LIMIT:
+            update["lock_until"] = (now + timedelta(minutes=LOCK_MINUTES)).isoformat()
+        await db.users.update_one({"id": user["id"]}, {"$set": update})
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
 
-    if verify_password(req.password, pw_hash):
-        await db.users.update_one(
-            {"id": user["id"]},
-            {"$set": {"failed_logins": 0, "last_login_at": now_iso()},
-             "$unset": {"failed_login_window_started_at": "", "lock_until": ""}},
-        )
-        user.pop("password_hash", None)
-        token = make_token(user["id"])
-        return {"token": token, "user": user, "is_new": False, "reactivated": False}
+    # Password OK. Branch on 2FA.
+    if user.get("two_factor_enabled"):
+        if not req.otp:
+            dev_otp = await _send_2fa_otp(user, purpose="login")
+            resp = {"requires_2fa": True, "phone_masked": _mask_phone(user.get("phone", ""))}
+            if dev_otp:
+                resp["dev_otp"] = dev_otp
+            return resp
+        # Verify the OTP
+        rec = await db.otps.find_one({"phone": user["phone"]}, {"_id": 0})
+        if not rec or rec.get("otp") != req.otp:
+            raise HTTPException(401, "Invalid verification code")
+        await db.otps.delete_one({"phone": user["phone"]})
 
-    # Failed attempt → bump counter, lock if over limit
-    now = _utcnow()
-    window_start = _parse_dt(user.get("failed_login_window_started_at"))
-    failed = int(user.get("failed_logins", 0))
-    if not window_start or (now - window_start).total_seconds() > FAILED_LOGIN_WINDOW_MINUTES * 60:
-        failed = 1
-        window_start = now
-    else:
-        failed += 1
-    update = {"failed_logins": failed, "failed_login_window_started_at": window_start.isoformat()}
-    if failed >= FAILED_LOGIN_LIMIT:
-        update["lock_until"] = (now + timedelta(minutes=LOCK_MINUTES)).isoformat()
-    await db.users.update_one({"id": user["id"]}, {"$set": update})
-    raise HTTPException(401, GENERIC_AUTH_ERROR)
+    # Success
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"failed_logins": 0, "last_login_at": now_iso()},
+         "$unset": {"failed_login_window_started_at": "", "lock_until": ""}},
+    )
+    user.pop("password_hash", None)
+    token = make_token(user["id"])
+    return {"token": token, "user": user, "is_new": False, "reactivated": False}
+
+
+@api_router.post("/auth/2fa")
+async def toggle_2fa(req: TwoFactorToggleReq, user=Depends(get_current_user)):
+    """Enable or disable 2-step verification.
+    - Enabling requires the user's current password (re-auth).
+    - Disabling requires both the password AND a fresh OTP sent to their phone.
+    """
+    pw_hash = user.get("password_hash")
+    if not pw_hash or not verify_password(req.password, pw_hash):
+        raise HTTPException(401, "Password is incorrect")
+    if not user.get("phone"):
+        raise HTTPException(400, "Add a phone number before enabling 2-step verification.")
+
+    if req.enable:
+        await db.users.update_one({"id": user["id"]}, {"$set": {"two_factor_enabled": True, "two_factor_enabled_at": now_iso()}})
+        return {"two_factor_enabled": True}
+
+    # Disabling — require OTP for extra safety
+    if not req.otp:
+        dev_otp = await _send_2fa_otp(user, purpose="disable_2fa")
+        resp = {"requires_otp": True, "phone_masked": _mask_phone(user["phone"])}
+        if dev_otp:
+            resp["dev_otp"] = dev_otp
+        return resp
+    rec = await db.otps.find_one({"phone": user["phone"]}, {"_id": 0})
+    if not rec or rec.get("otp") != req.otp:
+        raise HTTPException(401, "Invalid verification code")
+    await db.otps.delete_one({"phone": user["phone"]})
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"two_factor_enabled": False},
+         "$unset": {"two_factor_enabled_at": ""}},
+    )
+    return {"two_factor_enabled": False}
+
+
+# Removed - keep old login above
 
 
 @api_router.post("/auth/set-password")
@@ -701,10 +805,27 @@ class DraftReq(BaseModel):
     attachments: Optional[List[Dict[str, Any]]] = None
 
 
-def _validate_handle(h: str) -> str:
+def _handle_tier(h: str) -> str:
+    """Return 'free' | 'premium' | 'unavailable' based on length."""
+    n = len(h)
+    if n < HANDLE_HARD_MIN:
+        return "unavailable"
+    if n < HANDLE_FREE_MIN:
+        return "premium"
+    return "free"
+
+
+def _validate_handle(h: str, allow_premium: bool = False) -> str:
     h = (h or "").strip().lower()
-    if not HANDLE_RE.match(h):
-        raise HTTPException(400, "3–26 chars, letters/numbers/dashes only (no periods).")
+    if not h or len(h) > HANDLE_MAX:
+        raise HTTPException(400, f"Handle must be {HANDLE_HARD_MIN}–{HANDLE_MAX} characters.")
+    if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$", h):
+        raise HTTPException(400, "Letters, numbers and dashes only. Can't start or end with a dash.")
+    tier = _handle_tier(h)
+    if tier == "unavailable":
+        raise HTTPException(400, f"Handles under {HANDLE_HARD_MIN} characters aren't available.")
+    if tier == "premium" and not allow_premium:
+        raise HTTPException(402, "This handle requires a premium subscription.")
     if h in RESERVED_HANDLES:
         raise HTTPException(400, "That handle is reserved.")
     return h
@@ -712,12 +833,27 @@ def _validate_handle(h: str) -> str:
 
 @api_router.get("/mail/check-handle/{handle}")
 async def check_handle(handle: str, authorization: Optional[str] = Header(None)):
-    try:
-        h = _validate_handle(handle)
-    except HTTPException as e:
-        return {"available": False, "reason": e.detail}
+    h = (handle or "").strip().lower()
+    # Always return tier info so the UI can show "Premium" badges
+    if not h or len(h) > HANDLE_MAX:
+        return {"available": False, "tier": "unavailable", "reason": f"Must be {HANDLE_HARD_MIN}–{HANDLE_MAX} characters."}
+    if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$", h):
+        return {"available": False, "tier": "unavailable", "reason": "Letters, numbers and dashes only."}
+    tier = _handle_tier(h)
+    if tier == "unavailable":
+        return {"available": False, "tier": "unavailable", "reason": f"Handles under {HANDLE_HARD_MIN} characters aren't available."}
+    if h in RESERVED_HANDLES:
+        return {"available": False, "tier": tier, "reason": "That handle is reserved."}
     exists = await db.users.find_one({"email_handle": h}, {"_id": 0, "id": 1})
-    return {"available": not exists, "handle": h, "address": f"{h}@{MAIL_DOMAIN}"}
+    if exists:
+        return {"available": False, "tier": tier, "reason": "Already taken."}
+    return {
+        "available": True,
+        "tier": tier,  # "free" or "premium"
+        "handle": h,
+        "address": f"{h}@{MAIL_DOMAIN}",
+        "requires_premium": tier == "premium",
+    }
 
 
 @api_router.post("/mail/claim-handle")
