@@ -69,8 +69,10 @@ export default function AccountSettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.intro}>Manage security, learn about W, or take a break.</Text>
         <View style={styles.group}>
-          <Row icon="shield-checkmark" label="Two-step verification" hint={user?.two_factor_enabled ? "On" : "Off"} onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
-          <Row icon="information-circle" label="About W" hint="v1.0" onPress={() => router.push("/about")} testID="row-about" />
+          <Row icon="shield-checkmark" label="Two-step verification" onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
+          <Row icon="key" label="Passkeys" onPress={() => router.push("/settings/passkeys")} testID="row-passkeys" />
+          <Row icon="call" label="Change phone number" onPress={() => router.push("/settings/change-phone")} testID="row-change-phone" />
+          <Row icon="information-circle" label="About W" onPress={() => router.push("/about")} testID="row-about" />
           <Row icon="pause-circle-outline" label="Deactivate account" tone="danger" onPress={() => { setConfirmText(""); setStep("choose"); }} testID="row-deactivate" />
         </View>
       </ScrollView>

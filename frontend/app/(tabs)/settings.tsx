@@ -34,16 +34,16 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.group}>
-          <Row icon="star" label="W Premium" hint={user?.tier && user.tier !== "free" ? user.tier.toUpperCase() : "Upgrade"} onPress={() => router.push("/billing/upgrade")} testID="row-premium" />
+          <Row icon="star" label="W Premium" onPress={() => router.push("/billing/upgrade")} testID="row-premium" />
           {user?.custom_domain ? (
-            <Row icon="globe" label="Custom domain" hint={user?.domain_verified ? "Verified" : "Pending DNS"} onPress={() => router.push("/domain-setup")} testID="row-domain" />
+            <Row icon="globe" label="Custom domain" onPress={() => router.push("/domain-setup")} testID="row-domain" />
           ) : null}
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
-          <Row icon="sparkles" label="Action items" hint="AI-extracted" onPress={() => router.push("/actions")} testID="row-actions" />
-          <Row icon="color-palette" label="Theme" hint="W" />
+          <Row icon="sparkles" label="AI Assistant" onPress={() => router.push("/actions")} testID="row-ai-assistant" />
+          <Row icon="color-palette" label="Theme" />
           <Row icon="help-circle" label="Help & Support" />
-          <Row icon="mail" label="Mail" hint="Ghost, Recovery, Auto-reply, Signature" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
-          <Row icon="person-circle" label="Account" hint="2FA, About W, Deactivate" onPress={() => router.push("/settings/account")} testID="row-account-section" />
+          <Row icon="mail" label="Mail" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
+          <Row icon="person-circle" label="Account" onPress={() => router.push("/settings/account")} testID="row-account-section" />
         </View>
 
         <TouchableOpacity onPress={onSignOut} style={styles.signOut} testID="signout-btn">
