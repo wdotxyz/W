@@ -12,6 +12,7 @@ import * as FileSystem from "expo-file-system";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import BlueCheck from "../../src/components/BlueCheck";
+import * as WebBrowser from "expo-web-browser";
 import { Avatar } from "../(tabs)/chats";
 import { colors, radius, space } from "../../src/theme";
 
@@ -57,9 +58,40 @@ export default function ChatScreen() {
         setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
       } else if (m.type === "typing" && m.chat_id === id && m.user_id !== user?.id) {
         setTypingUser(m.is_typing ? m.user_id : null);
+      } else if (m.type === "incoming_call" && m.chat_id === id) {
+        Alert.alert(
+          `${m.from_name} is calling…`,
+          `Incoming ${m.call_type} call`,
+          [
+            { text: "Decline", style: "cancel" },
+            { text: "Answer", onPress: async () => {
+              try {
+                const r = await api<{ room_url: string; participant_token: string }>("/calls/join", {
+                  method: "POST", body: JSON.stringify({ room_url: m.room_url }),
+                });
+                const url = `${r.room_url}?t=${encodeURIComponent(r.participant_token)}`;
+                if (Platform.OS === "web") (window as any).open(url, "_blank");
+                else await WebBrowser.openBrowserAsync(url);
+              } catch (e: any) { Alert.alert("Couldn't join", e?.message); }
+            }},
+          ]
+        );
       }
     });
   }, [subscribe, id, user?.id]);
+
+  const startCall = async (callType: "audio" | "video") => {
+    try {
+      const res = await api<{ room_url: string; owner_token: string }>("/calls/start", {
+        method: "POST", body: JSON.stringify({ chat_id: id, call_type: callType }),
+      });
+      const url = `${res.room_url}?t=${encodeURIComponent(res.owner_token)}`;
+      if (Platform.OS === "web") { (window as any).open(url, "_blank"); return; }
+      await WebBrowser.openBrowserAsync(url);
+    } catch (e: any) {
+      Alert.alert("Couldn't start call", e?.message || "Try again.");
+    }
+  };
 
   const onSendText = async () => {
     if (!text.trim() || sending) return;
@@ -150,6 +182,16 @@ export default function ChatScreen() {
             {typingUser ? "typing…" : isAi ? "Always available" : chat?.is_group ? `${chat.member_ids?.length || 0} members` : "online"}
           </Text>
         </View>
+        {!isAi && !chat?.is_group && (
+          <>
+            <TouchableOpacity onPress={() => startCall("audio")} style={styles.callBtn} testID="start-audio-call">
+              <Ionicons name="call" size={20} color={colors.accent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => startCall("video")} style={styles.callBtn} testID="start-video-call">
+              <Ionicons name="videocam" size={22} color={colors.accent} />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       <ImageBackground source={{ uri: BG }} style={{ flex: 1 }} imageStyle={{ opacity: 0.12 }}>
@@ -250,6 +292,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: "#fff" },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   headerName: { fontSize: 16, fontWeight: "700", color: colors.text },
+  callBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", marginLeft: 4 },
   headerSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   bubRow: { flexDirection: "row", marginVertical: 4 },
   bubble: { maxWidth: "78%", padding: 10, borderRadius: 18, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
