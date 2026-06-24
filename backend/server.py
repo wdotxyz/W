@@ -181,6 +181,50 @@ async def me(user=Depends(get_current_user)):
     return user
 
 
+@api_router.delete("/auth/me")
+async def delete_account(user=Depends(get_current_user)):
+    """Permanently delete the authenticated user's account and all their data.
+    Per App Store / Google Play policy, this fully erases user-owned records.
+    Outgoing emails already delivered cannot be recalled.
+    """
+    uid = user["id"]
+    addr = (user.get("email_address") or "").lower()
+
+    # 1) Remove user from chats they participate in; delete chats they were in alone or as 1:1
+    chats = await db.chats.find({"member_ids": uid}, {"_id": 0}).to_list(1000)
+    chat_ids_to_delete: list[str] = []
+    for c in chats:
+        members = [m for m in (c.get("member_ids") or []) if m != uid]
+        # 1:1 or AI chat — drop the whole chat. Group chat — keep it but remove the user.
+        if len(members) <= 1 or not c.get("is_group"):
+            chat_ids_to_delete.append(c["id"])
+        else:
+            await db.chats.update_one({"id": c["id"]}, {"$pull": {"member_ids": uid}})
+
+    if chat_ids_to_delete:
+        await db.chats.delete_many({"id": {"$in": chat_ids_to_delete}})
+        await db.messages.delete_many({"chat_id": {"$in": chat_ids_to_delete}})
+
+    # 2) Remove messages the user sent in any remaining (group) chats so their content is gone too
+    await db.messages.delete_many({"sender_id": uid})
+
+    # 3) Wipe all owned mail (sent, drafts, inbox) and any inbound mail addressed to their handle
+    await db.emails.delete_many({"owner_id": uid})
+    if addr:
+        await db.emails.delete_many({"to_addrs": addr})
+
+    # 4) Wipe statuses & OTPs
+    await db.statuses.delete_many({"user_id": uid})
+    if user.get("phone"):
+        await db.otps.delete_many({"phone": user["phone"]})
+
+    # 5) Finally remove the user record itself
+    await db.users.delete_one({"id": uid})
+
+    logger.info(f"Account deleted: user_id={uid} handle={user.get('email_handle')} phone={user.get('phone')}")
+    return {"deleted": True}
+
+
 @api_router.patch("/auth/notification-settings")
 async def update_notif_settings(req: NotifSettingsReq, user=Depends(get_current_user)):
     update = {f"notif.{k}": v for k, v in req.dict().items() if v is not None}
@@ -610,19 +654,24 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if SENDGRID_API_KEY:
         try:
             from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail, Email, To, Content, Attachment, FileContent, FileName, FileType, Disposition, Header
-            # Build an HTML version from the plain text body for better deliverability
+            from sendgrid.helpers.mail import Mail, Email, To, ReplyTo, Content, Attachment, FileContent, FileName, FileType, Disposition, Header
+            # Build BOTH plain-text and HTML versions with matching footers so
+            # the MIME parts are balanced (avoids MIME_HTML_MOSTLY).
+            plain_body = _text_to_plain(body_out or " ", from_addr)
             html_body = _text_to_html(body_out or " ", user.get("name") or from_addr)
             msg = Mail(
                 from_email=Email(from_addr, user.get("name") or from_addr),
                 subject=req.subject or "(no subject)",
-                plain_text_content=Content("text/plain", body_out or " "),
+                plain_text_content=Content("text/plain", plain_body),
                 html_content=Content("text/html", html_body),
             )
+            # Reply-To so replies route back to the same @w.xyz address (small reputation win).
+            msg.reply_to = ReplyTo(from_addr, user.get("name") or from_addr)
             # List-Unsubscribe header (RFC 8058) — strong signal of legitimate mail
             unsubscribe_url = f"mailto:unsubscribe@{MAIL_DOMAIN}?subject=unsubscribe"
             msg.add_header(Header("List-Unsubscribe", f"<{unsubscribe_url}>"))
             msg.add_header(Header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"))
+            msg.add_header(Header("X-Mailer", "W Mail/1.0"))
             for addr in record["to_addrs"]:
                 msg.add_to(To(addr))
             for a in (req.attachments or []):
@@ -760,37 +809,52 @@ def _strip_html(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
 
+def _text_to_plain(text: str, from_addr: str = "") -> str:
+    """Plain-text version with footer that mirrors the HTML one.
+    Bulks up the text/plain MIME part so it isn't dwarfed by the HTML part
+    (avoids SpamAssassin's MIME_HTML_MOSTLY rule).
+    """
+    body = (text or "").rstrip()
+    footer = (
+        "\n\n"
+        "—\n"
+        "Sent via W — your AI-native messaging & mail (https://w.xyz).\n"
+        f"Reply to this message or write {from_addr or 'us'} directly.\n"
+        f"To unsubscribe, email unsubscribe@{MAIL_DOMAIN} or reply with the word 'unsubscribe'."
+    )
+    return body + footer
+
+
 def _text_to_html(text: str, sender_name: str = "") -> str:
     """Convert plain text to a clean HTML email with proper structure.
     Helps deliverability (real mail is multipart) and looks better in client.
+    Kept lean to maintain a healthy text-to-HTML ratio.
     """
     import html as _html
     escaped = _html.escape(text or "")
     # Convert URLs to clickable links
     escaped = re.sub(
         r"(https?://[^\s<>\"]+)",
-        r'<a href="\1" style="color:#0A7A90;text-decoration:underline">\1</a>',
+        r'<a href="\1" style="color:#0A7A90">\1</a>',
         escaped,
     )
-    # Preserve line breaks
     escaped = escaped.replace("\n", "<br>")
-    sender = _html.escape(sender_name) if sender_name else ""
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f0f4f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#06152B;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f4f8;padding:24px 0;">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:12px;max-width:600px;width:100%;">
-<tr><td style="padding:32px;font-size:15px;line-height:1.55;color:#06152B;">
-{escaped}
-</td></tr>
-<tr><td style="padding:16px 32px 24px;border-top:1px solid #E2E8F0;font-size:11px;color:#5B7083;text-align:center;">
-Sent via <a href="https://w.xyz" style="color:#0A7A90;text-decoration:none">W</a> — your AI-native messaging & mail. To unsubscribe, reply with "unsubscribe".
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>"""
+    return (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>Message</title></head>'
+        '<body style="margin:0;padding:24px;background:#f0f4f8;'
+        'font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#06152B;font-size:15px;line-height:1.55">'
+        '<div style="max-width:600px;margin:0 auto;background:#fff;padding:28px;border-radius:10px">'
+        f'{escaped}'
+        '<p style="margin-top:28px;padding-top:14px;border-top:1px solid #E2E8F0;'
+        'font-size:12px;color:#5B7083">'
+        'Sent via <a href="https://w.xyz" style="color:#0A7A90">W</a> — '
+        'your AI-native messaging &amp; mail. '
+        f'To unsubscribe, email <a href="mailto:unsubscribe@{MAIL_DOMAIN}" style="color:#0A7A90">'
+        f'unsubscribe@{MAIL_DOMAIN}</a> or reply with the word "unsubscribe".'
+        '</p></div></body></html>'
+    )
 
 
 # -------------------- Status / Updates --------------------
