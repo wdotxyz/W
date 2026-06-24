@@ -23,7 +23,9 @@ export default function SignInScreen() {
 
   const onSignIn = async () => {
     if (!canSubmit) return;
-    const fullEmail = email.trim().toLowerCase();
+    let raw = email.trim().toLowerCase();
+    // Forgive users who type only their handle (e.g. "peter") — assume @w.xyz
+    const fullEmail = raw.includes("@") ? raw : `${raw}@w.xyz`;
     setLoading(true);
     try {
       const res: any = await api("/auth/login", {
@@ -49,7 +51,10 @@ export default function SignInScreen() {
       if (msg.includes("locked") || msg.includes("429")) {
         Alert.alert("Account locked", "Too many failed attempts. Try again in a few minutes or reset your password.");
       } else {
-        Alert.alert("Sign in failed", "The email or password is incorrect.");
+        Alert.alert(
+          "Sign in failed",
+          `The email or password is incorrect.\n\nTried: ${fullEmail}\n\nTip: enter the full address (e.g. peter@w.xyz) or just your handle — we'll add @w.xyz for you.`,
+        );
       }
     } finally {
       setLoading(false);
@@ -85,7 +90,7 @@ export default function SignInScreen() {
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@w.xyz"
+                placeholder="peter or peter@w.xyz"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="email-address"
                 autoCapitalize="none"

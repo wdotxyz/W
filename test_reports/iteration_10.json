@@ -1,0 +1,39 @@
+{
+  "summary": "Sign-in bug fix verified end-to-end (backend + frontend). Handle-only input ('peter') is silently auto-appended to 'peter@w.xyz' and reaches /(tabs)/updates, full-email input also works, wrong creds keep user on /signin and don't navigate. Settings 8-row order, help FAQ accordion toggle, and /actions 'AI Assistant' header all pass regression. Backend pytest suite (7 cases) green. Notes: Alert.alert from react-native is a NO-OP on react-native-web preview (pre-existing platform limitation), so 'Sign in failed' alert content cannot be visually verified in the web preview — verified via DOM/URL behavior + backend 401 + reachable code path. On native iOS/Android the alert will render normally.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web Alert", "issue": "Alert.alert is a no-op on react-native-web, so failure alerts in signin.tsx (lines 52, 54) and elsewhere are not visible in the web preview. Pre-existing across the app; on native it works. Optional: add a small alert polyfill or in-screen error banner for parity. Reference: /app/frontend/app/(auth)/signin.tsx:52-58."},
+    {"component": "shadow* deprecation", "issue": "Console warns 'shadow* style props are deprecated. Use boxShadow.' across the app. Reference: signin.tsx:206-210 cta shadow*; will eventually break in future RN-Web versions."},
+    {"component": "props.pointerEvents deprecation", "issue": "Console warns 'props.pointerEvents is deprecated. Use style.pointerEvents'. Reference: somewhere in tab/safe-area wrappers."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_signin_bugfix.py",
+    "/app/test_reports/pytest/signin_bugfix_results.xml"
+  ],
+  "action_items": [
+    "(Optional, not blocking) Replace Alert.alert with an in-screen error banner inside signin.tsx so the 'Sign in failed' / 'Account locked' text is visible on web preview too — currently invisible on web (no-op).",
+    "(Optional) Address RN-Web deprecation warnings (shadow* → boxShadow, props.pointerEvents → style.pointerEvents) — not breaking now."
+  ],
+  "critical_code_review_comments": [
+    "signin.tsx auto-append logic is correct: trims + lowercases input, appends @w.xyz only when '@' is missing. Edge cases like trailing '@' (e.g. 'peter@') would NOT be auto-fixed; minor UX nit only.",
+    "Backend /api/auth/login schema field is `email` (not `email_address` as the test_credentials.md curl example claims). /app/memory/test_credentials.md line 67 should be updated for accuracy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_signin_bugfix.py (created)",
+    "/app/test_reports/pytest/signin_bugfix_results.xml (generated)"
+  ],
+  "success_rate": {"backend": "100% (7/7 pytest)", "frontend": "100% on all bug-fix + regression scenarios that are observable on web"},
+  "seed_data_creation": "Reset peter@w.xyz failed_logins counter before testing. One TEST_-prefixed support ticket inserted during regression (cleanup not required).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bug fix iteration 10: signin auto-appends @w.xyz when no @ present. Confirmed working. Web preview cannot visually display Alert.alert (RN-Web no-op) — verify failure flows via URL-stayed-on-signin + backend 401 instead of looking for the dialog. Use page.add_init_script to wrap window.alert if a custom polyfill is added later.",
+  "rca_of_issue": "Original bug ('app isn't signing me in'): users typed just 'peter' in the email field; backend rejects email lacking '@' with 401 (GENERIC_AUTH_ERROR). Fix: frontend signin.tsx onSignIn() lines 26-28 now does `raw.includes('@') ? raw : `${raw}@w.xyz``. Placeholder updated to 'peter or peter@w.xyz' (signin.tsx:93). Failure alert now echoes the auto-appended address so user can tell what was tried (signin.tsx:54-57). Backend code unchanged this iteration. Verified by typing 'peter' + correct password → navigated to /updates and the test user's session was applied (My status avatar 'P' visible)."
+}
