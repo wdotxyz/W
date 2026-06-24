@@ -101,10 +101,7 @@ export default function UpgradeScreen() {
         <View style={styles.back} />
       </View>
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Unlock more of W</Text>
-        <Text style={styles.sub}>
-          Custom @w.xyz address is included on every plan — that&apos;s our niche.
-        </Text>
+        <Text style={styles.title}>W for Way more</Text>
 
         {/* Billing-interval toggle */}
         <View style={styles.intervalRow}>
@@ -147,7 +144,7 @@ export default function UpgradeScreen() {
                 )}
               </View>
               <View style={styles.priceRow}>
-                <Text style={styles.priceAmount}>{isFree ? "Free" : `$${price.toFixed(2)}`}</Text>
+                <Text style={styles.priceAmount}>{isFree ? "Always Free" : `$${price.toFixed(2)}`}</Text>
                 {!isFree && (
                   <Text style={styles.pricePeriod}>{interval === "month" ? "/ month" : "/ year"}</Text>
                 )}

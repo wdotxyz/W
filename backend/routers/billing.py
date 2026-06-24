@@ -20,9 +20,14 @@ async def billing_plans():
     return {
         'currency': 'usd',
         'plans': [
-            {'tier': 'free', 'label': 'Free', 'monthly': 0, 'yearly': 0,
+            {'tier': 'free', 'label': 'Essentials', 'monthly': 0, 'yearly': 0,
              'storage_gb': TIER_STORAGE_GB['free'],
-             'perks': ['1 GB storage', 'Custom @w.xyz address', '6+ character handles']},
+             'perks': [
+                 'Premium @w.xyz address',
+                 '1 GB storage',
+                 'Custom Email Addresses Using Your Own Domains',
+                 'Ghost mail (Privacy Enforced Emails that Disappear Instantly)',
+             ]},
             {'tier': 'plus', 'label': 'Plus',
              'monthly': PLAN_CATALOG[('plus', 'month')]['amount'],
              'yearly':  PLAN_CATALOG[('plus', 'year')]['amount'],
