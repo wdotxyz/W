@@ -98,32 +98,35 @@ export default function SignInScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
 
-        {/* Create account — bottom, prominent */}
-        <View style={styles.bottomWrap}>
-          <View style={styles.divider}>
-            <View style={styles.line} />
-            <Text style={styles.dividerText}>New to W?</Text>
-            <View style={styles.line} />
+          {/* Spacer pushes the bottom block down on tall screens; collapses on short ones */}
+          <View style={{ flex: 1, minHeight: 24 }} />
+
+          {/* Create account — always reachable via scroll */}
+          <View style={styles.bottomWrap}>
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text style={styles.dividerText}>New to W?</Text>
+              <View style={styles.line} />
+            </View>
+            <TouchableOpacity
+              style={styles.createBtn}
+              onPress={() => router.push("/(auth)/phone")}
+              testID="goto-signup-btn"
+              activeOpacity={0.85}
+            >
+              <Ionicons name="person-add-outline" size={18} color={colors.primary} />
+              <Text style={styles.createText}>Create an account</Text>
+            </TouchableOpacity>
+            <Text style={styles.legal}>
+              By continuing you agree to W{" "}
+              <Text style={styles.legalLink} onPress={() => router.push("/legal/terms")}>Terms</Text>
+              {" & "}
+              <Text style={styles.legalLink} onPress={() => router.push("/legal/privacy")}>Privacy</Text>
+              .
+            </Text>
           </View>
-          <TouchableOpacity
-            style={styles.createBtn}
-            onPress={() => router.push("/(auth)/phone")}
-            testID="goto-signup-btn"
-            activeOpacity={0.85}
-          >
-            <Ionicons name="person-add-outline" size={18} color={colors.primary} />
-            <Text style={styles.createText}>Create an account</Text>
-          </TouchableOpacity>
-          <Text style={styles.legal}>
-            By continuing you agree to W{" "}
-            <Text style={styles.legalLink} onPress={() => router.push("/legal/terms")}>Terms</Text>
-            {" & "}
-            <Text style={styles.legalLink} onPress={() => router.push("/legal/privacy")}>Privacy</Text>
-            .
-          </Text>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -132,7 +135,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   flex: { flex: 1 },
-  scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 12, flexGrow: 1 },
+  scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 24, flexGrow: 1, minHeight: "100%" as any },
 
   brandWrap: { alignItems: "center", marginTop: 24, marginBottom: 28 },
   logoCircle: {
