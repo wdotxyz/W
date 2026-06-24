@@ -164,10 +164,10 @@ export default function PhoneScreen() {
                 <View style={styles.previewBox}>
                   <Text style={styles.previewLabel}>YOUR PRIMARY ADDRESS</Text>
                   <Text style={styles.previewAddr}>{username}@{customDomain}</Text>
-                  <Text style={styles.previewLabel}>FALLBACK (always yours)</Text>
+                  <Text style={styles.previewLabel}>RECOVERY ADDRESS (always yours)</Text>
                   <Text style={styles.previewFallback}>{username}-{customDomain.replace(/\./g, "-")}@w.xyz</Text>
                   <Text style={styles.previewHint}>
-                    After signup you&apos;ll get DNS instructions to activate the custom domain. If you ever lose the domain, your @w.xyz fallback stays yours.
+                    After signup you&apos;ll get DNS instructions to activate the custom domain. If you ever lose the domain, your @w.xyz recovery address stays yours.
                   </Text>
                 </View>
               )}

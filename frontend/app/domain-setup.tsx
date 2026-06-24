@@ -80,10 +80,10 @@ export default function DomainSetupScreen() {
         <Text style={styles.title}>{data.domain}</Text>
         {!!data.fallback_address && (
           <View style={styles.fallbackCard}>
-            <Text style={styles.fallbackLabel}>Your fallback address (always yours)</Text>
+            <Text style={styles.fallbackLabel}>Your recovery address (always yours)</Text>
             <Text style={styles.fallbackAddr}>{data.fallback_address}</Text>
             <Text style={styles.fallbackHint}>
-              If you ever lose access to <Text style={{ fontWeight: "700" }}>{data.domain}</Text>, this @w.xyz address keeps your account safe.
+              If you ever lose access to <Text style={{ fontWeight: "700" }}>{data.domain}</Text>, this @w.xyz recovery address keeps your account safe.
             </Text>
           </View>
         )}
@@ -116,7 +116,7 @@ export default function DomainSetupScreen() {
         </TouchableOpacity>
 
         <Text style={styles.fineprint}>
-          DNS changes typically apply within minutes but can take up to 48 hours. Until verification completes you&apos;ll receive mail at your fallback address.
+          DNS changes typically apply within minutes but can take up to 48 hours. Until verification completes you&apos;ll receive mail at your recovery address.
         </Text>
       </ScrollView>
     </SafeAreaView>
