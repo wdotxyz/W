@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -45,11 +45,12 @@ export default function SignInScreen() {
         >
           {/* Brand header */}
           <View style={styles.brandWrap}>
-            <View style={styles.logoCircle}>
-              <Text style={styles.logoW}>W</Text>
-            </View>
-            <Text style={styles.brand}>Welcome to W</Text>
-            <Text style={styles.tag}>Messaging that flows. AI-native.</Text>
+            <Image
+              source={require("../../assets/images/brand-logo.png")}
+              style={styles.brandLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.tag}>Next Generation of Webmail</Text>
           </View>
 
           {/* Sign-in form */}
@@ -138,14 +139,8 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 24, flexGrow: 1, minHeight: "100%" as any },
 
   brandWrap: { alignItems: "center", marginTop: 24, marginBottom: 28 },
-  logoCircle: {
-    width: 72, height: 72, borderRadius: 22, backgroundColor: colors.primary,
-    alignItems: "center", justifyContent: "center", marginBottom: 14,
-    shadowColor: colors.primary, shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 5,
-  },
-  logoW: { color: "#fff", fontSize: 36, fontWeight: "800", letterSpacing: -1 },
-  brand: { fontSize: 24, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
-  tag: { fontSize: 14, color: colors.textMuted, marginTop: 4 },
+  brandLogo: { width: 110, height: 110, marginBottom: 12 },
+  tag: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
 
   formCard: { marginTop: 8 },
   title: { fontSize: 22, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
