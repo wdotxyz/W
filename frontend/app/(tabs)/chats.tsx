@@ -83,7 +83,10 @@ export default function ChatsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.pageTitle}>Chats</Text>
+        <View style={styles.titleRow}>
+          <Image source={require("../../assets/images/brand-logo.png")} style={styles.headerLogo} resizeMode="contain" />
+          <Text style={styles.pageTitle}>Chats</Text>
+        </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/new-group")} testID="new-group-btn">
             <Ionicons name="people" size={22} color={colors.primary} />
@@ -173,6 +176,8 @@ function formatTime(iso?: string) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: space.xl, paddingVertical: space.md, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerLogo: { width: 30, height: 30 },
   pageTitle: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   brand: { fontSize: 30, fontWeight: "800", color: colors.primary, letterSpacing: -0.5 },
   welcome: { fontSize: 13, color: colors.textMuted, marginTop: 2 },

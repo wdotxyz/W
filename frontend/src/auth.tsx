@@ -16,6 +16,7 @@ type Ctx = {
   user: User | null;
   loading: boolean;
   setUser: (u: User | null) => void;
+  applySession: (token: string, user: User) => Promise<void>;
   signOut: () => Promise<void>;
   ws: WebSocket | null;
   subscribe: (fn: Listener) => () => void;
@@ -78,6 +79,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (wsRef.current) wsRef.current.close();
   };
 
+  const applySession = async (token: string, u: User) => {
+    await setToken(token);
+    setUser(u);
+    connectWS();
+  };
+
   const subscribe = (fn: Listener) => {
     listeners.current.add(fn);
     return () => listeners.current.delete(fn) as any;
@@ -90,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthCtx.Provider value={{ user, loading, setUser, signOut, ws: wsRef.current, subscribe, send }}>
+    <AuthCtx.Provider value={{ user, loading, setUser, applySession, signOut, ws: wsRef.current, subscribe, send }}>
       {children}
     </AuthCtx.Provider>
   );

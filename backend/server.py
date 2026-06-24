@@ -49,6 +49,28 @@ class SendOtpReq(BaseModel):
 class VerifyOtpReq(BaseModel):
     phone: str
     otp: str
+    password: Optional[str] = None  # optional during new signup
+
+
+class LoginReq(BaseModel):
+    email: str
+    password: str
+
+
+class SetPasswordReq(BaseModel):
+    password: str
+    current_password: Optional[str] = None  # required if a password already exists
+
+
+class ForgotPasswordReq(BaseModel):
+    email: str
+
+
+class ResetPasswordReq(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
 
 class ProfileReq(BaseModel):
     name: str
@@ -87,6 +109,57 @@ def now_iso():
 def make_token(user_id: str) -> str:
     payload = {"user_id": user_id, "exp": datetime.now(timezone.utc) + timedelta(days=30)}
     return pyjwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+# -------------------- Password helpers (bcrypt) --------------------
+import bcrypt as _bcrypt
+
+MIN_PASSWORD_LEN = 8
+MAX_BCRYPT_BYTES = 72
+FAILED_LOGIN_LIMIT = 5
+FAILED_LOGIN_WINDOW_MINUTES = 15
+LOCK_MINUTES = 15
+GENERIC_AUTH_ERROR = "Invalid email or password"
+# Dummy hash used to keep timing constant when email doesn't exist.
+_DUMMY_HASH = _bcrypt.hashpw(b"dummypasswordxx", _bcrypt.gensalt(rounds=10)).decode()
+
+
+def validate_password(password: str) -> None:
+    if not isinstance(password, str) or len(password) < MIN_PASSWORD_LEN:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    if len(password.encode("utf-8")) > MAX_BCRYPT_BYTES:
+        raise HTTPException(400, "Password is too long (max 72 bytes)")
+    if not re.search(r"[0-9\W_]", password):
+        raise HTTPException(400, "Password must include a number or symbol")
+
+
+def hash_password(password: str) -> str:
+    validate_password(password)
+    return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt(rounds=12)).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
+def _parse_dt(v):
+    """Mongo may return either a real datetime or an ISO string — normalize."""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
 
 
 async def get_current_user(authorization: str = Header(None)) -> Dict[str, Any]:
@@ -174,8 +247,146 @@ async def verify_otp(req: VerifyOtpReq):
         user["deactivated"] = False
         reactivated = True
     await db.otps.delete_one({"phone": req.phone})
+    # If a password was supplied (signup), hash & store it now and clear lockout
+    if req.password:
+        pw_hash = hash_password(req.password)
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"password_hash": pw_hash, "failed_logins": 0},
+             "$unset": {"failed_login_window_started_at": "", "lock_until": ""}},
+        )
+        user["password_hash"] = pw_hash
     token = make_token(user["id"])
+    user.pop("password_hash", None)
     return {"token": token, "user": user, "is_new": is_new, "reactivated": reactivated}
+
+
+@api_router.post("/auth/login")
+async def login(req: LoginReq):
+    """Email + password login. Generic 401 on any failure (no enumeration)."""
+    email = (req.email or "").strip().lower()
+    if not email or "@" not in email:
+        # Still keep timing constant
+        verify_password(req.password or "", _DUMMY_HASH)
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+    user = await db.users.find_one({"email_address": email}, {"_id": 0})
+    if not user:
+        verify_password(req.password or "", _DUMMY_HASH)
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+    # Deactivated → block login (they must reactivate via phone OTP)
+    if user.get("deactivated"):
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+    # Lockout check
+    lock_until = _parse_dt(user.get("lock_until"))
+    if lock_until and lock_until > _utcnow():
+        raise HTTPException(429, "Account temporarily locked. Try again in a few minutes.")
+    pw_hash = user.get("password_hash")
+    if not pw_hash:
+        verify_password(req.password or "", _DUMMY_HASH)
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+
+    if verify_password(req.password, pw_hash):
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"failed_logins": 0, "last_login_at": now_iso()},
+             "$unset": {"failed_login_window_started_at": "", "lock_until": ""}},
+        )
+        user.pop("password_hash", None)
+        token = make_token(user["id"])
+        return {"token": token, "user": user, "is_new": False, "reactivated": False}
+
+    # Failed attempt → bump counter, lock if over limit
+    now = _utcnow()
+    window_start = _parse_dt(user.get("failed_login_window_started_at"))
+    failed = int(user.get("failed_logins", 0))
+    if not window_start or (now - window_start).total_seconds() > FAILED_LOGIN_WINDOW_MINUTES * 60:
+        failed = 1
+        window_start = now
+    else:
+        failed += 1
+    update = {"failed_logins": failed, "failed_login_window_started_at": window_start.isoformat()}
+    if failed >= FAILED_LOGIN_LIMIT:
+        update["lock_until"] = (now + timedelta(minutes=LOCK_MINUTES)).isoformat()
+    await db.users.update_one({"id": user["id"]}, {"$set": update})
+    raise HTTPException(401, GENERIC_AUTH_ERROR)
+
+
+@api_router.post("/auth/set-password")
+async def set_password(req: SetPasswordReq, user=Depends(get_current_user)):
+    """Set or change the authenticated user's password.
+    If a password is already set, current_password must match.
+    """
+    existing = user.get("password_hash")
+    if existing:
+        if not req.current_password or not verify_password(req.current_password, existing):
+            raise HTTPException(401, "Current password is incorrect")
+    new_hash = hash_password(req.password)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": new_hash, "failed_logins": 0, "password_updated_at": now_iso()},
+         "$unset": {"failed_login_window_started_at": "", "lock_until": ""}},
+    )
+    return {"success": True}
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(req: ForgotPasswordReq):
+    """Send a phone OTP to the email's owner. Always returns success (no enumeration)."""
+    email = (req.email or "").strip().lower()
+    if email and "@" in email:
+        user = await db.users.find_one({"email_address": email}, {"_id": 0})
+        if user and user.get("phone"):
+            # Reuse send_otp internals (Twilio or dev fallback)
+            try:
+                otp = f"{random.randint(0, 999999):06d}"
+                await db.otps.update_one(
+                    {"phone": user["phone"]},
+                    {"$set": {"phone": user["phone"], "otp": otp, "created_at": now_iso(),
+                              "purpose": "password_reset"}},
+                    upsert=True,
+                )
+                if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
+                    try:
+                        from twilio.rest import Client as _Twilio
+                        _Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).messages.create(
+                            to=user["phone"], from_=TWILIO_PHONE_NUMBER,
+                            body=f"Your W password reset code is {otp}. Valid for 10 minutes.",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Twilio reset SMS failed: {e}")
+                        return {"success": True, "dev_otp": otp}
+                else:
+                    return {"success": True, "dev_otp": otp}
+            except Exception as e:
+                logger.exception(f"forgot-password error: {e}")
+    # Generic response either way
+    return {"success": True}
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(req: ResetPasswordReq):
+    email = (req.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+    user = await db.users.find_one({"email_address": email}, {"_id": 0})
+    if not user or not user.get("phone"):
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+    rec = await db.otps.find_one({"phone": user["phone"]}, {"_id": 0})
+    if not rec or rec.get("otp") != req.otp:
+        raise HTTPException(401, GENERIC_AUTH_ERROR)
+    # Hash + persist new password, consume OTP, clear lockout
+    new_hash = hash_password(req.new_password)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": new_hash, "failed_logins": 0,
+                  "password_updated_at": now_iso(), "last_login_at": now_iso()},
+         "$unset": {"failed_login_window_started_at": "", "lock_until": "",
+                    "deactivated": "", "deactivated_at": ""}},
+    )
+    await db.otps.delete_one({"phone": user["phone"]})
+    refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    token = make_token(user["id"])
+    return {"token": token, "user": refreshed, "is_new": False, "reactivated": False}
 
 
 @api_router.post("/auth/profile")

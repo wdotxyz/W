@@ -3,12 +3,14 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { Redirect } from "expo-router";
 import { useAuth } from "../src/auth";
 import { colors } from "../src/theme";
+import BrandMark from "../src/components/BrandMark";
 
 export default function Index() {
   const { user, loading } = useAuth();
   if (loading) {
     return (
       <View style={styles.c}>
+        <BrandMark size={72} style={{ marginBottom: 20 }} />
         <ActivityIndicator color={colors.accent} />
       </View>
     );

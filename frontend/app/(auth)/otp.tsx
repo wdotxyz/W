@@ -11,7 +11,7 @@ import { colors, radius, space } from "../../src/theme";
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { phone, devOtp, name: signupName, username: signupUsername } = useLocalSearchParams<{ phone: string; devOtp?: string; name?: string; username?: string }>();
+  const { phone, devOtp, name: signupName, username: signupUsername, password: signupPassword } = useLocalSearchParams<{ phone: string; devOtp?: string; name?: string; username?: string; password?: string }>();
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
@@ -22,7 +22,7 @@ export default function OtpScreen() {
     try {
       const res = await api<{ token: string; user: any; is_new: boolean }>("/auth/verify-otp", {
         method: "POST",
-        body: JSON.stringify({ phone, otp }),
+        body: JSON.stringify({ phone, otp, password: signupPassword || undefined }),
       });
       await setToken(res.token);
       let user = res.user;
@@ -60,6 +60,7 @@ export default function OtpScreen() {
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.body}>
+          <Image source={require("../../assets/images/brand-logo.png")} style={styles.brandLogo} resizeMode="contain" />
           <Text style={styles.title}>Enter code</Text>
           <Text style={styles.sub}>
             Sent to <Text style={{ fontWeight: "700", color: colors.text }}>{phone}</Text>
@@ -102,6 +103,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, padding: space.xl },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -8 },
   body: { flex: 1, marginTop: space.lg },
+  brandLogo: { width: 64, height: 64, marginBottom: 16 },
   title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   sub: { fontSize: 15, color: colors.textMuted, marginTop: 6, marginBottom: 32 },
   code: {

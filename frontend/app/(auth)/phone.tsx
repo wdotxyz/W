@@ -17,6 +17,8 @@ export default function PhoneScreen() {
   const [usernameStatus, setUsernameStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean }>({});
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("+1");
+  const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -32,7 +34,8 @@ export default function PhoneScreen() {
   }, [username]);
 
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-  const isValid = firstName.trim().length >= 2 && phone.length >= 6 && usernameStatus.available === true;
+  const pwdStrong = password.length >= 8 && /[0-9\W_]/.test(password);
+  const isValid = firstName.trim().length >= 2 && phone.length >= 6 && usernameStatus.available === true && pwdStrong;
 
   const onContinue = async () => {
     if (!isValid) return;
@@ -45,7 +48,7 @@ export default function PhoneScreen() {
       });
       router.push({
         pathname: "/(auth)/otp",
-        params: { phone: full, devOtp: res.dev_otp, name: fullName, username: username.trim() },
+        params: { phone: full, devOtp: res.dev_otp, name: fullName, username: username.trim(), password },
       });
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to send OTP");
@@ -148,7 +151,35 @@ export default function PhoneScreen() {
               />
             </View>
           </View>
-          <Text style={styles.hint}>Dev mode: OTP will be shown on the next screen.</Text>
+          <Text style={styles.hint}>We&apos;ll text you a 6-digit code to verify it&apos;s really you.</Text>
+
+          {/* PASSWORD */}
+          <Text style={styles.label}>Password</Text>
+          <View style={styles.pwdBox}>
+            <TextInput
+              style={styles.pwdInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="At least 8 characters with a number/symbol"
+              placeholderTextColor={colors.textMuted}
+              secureTextEntry={!showPwd}
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="signup-password-input"
+            />
+            <TouchableOpacity onPress={() => setShowPwd((v) => !v)} style={styles.eyeBtn} testID="toggle-pwd-visibility">
+              <Ionicons name={showPwd ? "eye-off" : "eye"} size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.statusRow}>
+            {password.length === 0 ? (
+              <Text style={styles.statusText}>You&apos;ll use this to sign in next time</Text>
+            ) : pwdStrong ? (
+              <><Ionicons name="checkmark-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>Strong password</Text></>
+            ) : (
+              <><Ionicons name="alert-circle" size={16} color={colors.danger} /><Text style={[styles.statusText, { color: colors.danger }]}>Need 8+ chars with a number or symbol</Text></>
+            )}
+          </View>
 
           {/* Sign-in link for returning users */}
           <TouchableOpacity
@@ -196,6 +227,9 @@ const styles = StyleSheet.create({
   phoneBox: { flex: 1, backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
   phoneInput: { fontSize: 16, color: colors.text, paddingVertical: 14, fontWeight: "500" },
   hint: { color: colors.textMuted, fontSize: 12, marginTop: 10 },
+  pwdBox: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.lg, paddingLeft: 14, paddingRight: 6 },
+  pwdInput: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 14, minWidth: 0 },
+  eyeBtn: { padding: 10 },
   signinRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 28, padding: 8 },
   signinText: { color: colors.textMuted, fontSize: 14 },
   signinLink: { color: colors.accent, fontSize: 14, fontWeight: "800" },

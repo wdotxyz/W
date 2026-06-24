@@ -7,29 +7,49 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../src/api";
+import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
+
+const HANDLE_RE = /^[a-z0-9-]+$/;
 
 export default function SignInScreen() {
   const router = useRouter();
-  const [phone, setPhone] = useState("");
-  const [country, setCountry] = useState("+1");
+  const { applySession } = useAuth();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const onContinue = async () => {
-    const full = `${country}${phone.replace(/\D/g, "")}`;
-    if (phone.length < 6) {
-      Alert.alert("Invalid phone", "Please enter a valid phone number.");
-      return;
-    }
+  // Allow typing either the handle ('sam') or the full address ('sam@w.xyz').
+  const normalizeEmail = (raw: string) => {
+    const v = (raw || "").trim().toLowerCase();
+    if (!v) return "";
+    if (v.includes("@")) return v;
+    if (HANDLE_RE.test(v)) return `${v}@w.xyz`;
+    return v;
+  };
+
+  const canSubmit = email.trim().length >= 1 && password.length >= 1 && !loading;
+
+  const onSignIn = async () => {
+    if (!canSubmit) return;
+    const fullEmail = normalizeEmail(email);
     setLoading(true);
     try {
-      const res = await api<{ dev_otp: string }>("/auth/send-otp", {
+      const res = await api<{ token: string; user: any }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ phone: full }),
+        body: JSON.stringify({ email: fullEmail, password }),
       });
-      router.push({ pathname: "/(auth)/otp", params: { phone: full, devOtp: res.dev_otp } });
+      await applySession(res.token, res.user);
+      router.replace("/(tabs)/updates");
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to send OTP");
+      const msg = (e?.message || "").toLowerCase();
+      if (msg.includes("locked") || msg.includes("429")) {
+        Alert.alert("Account locked", "Too many failed attempts. Try again in a few minutes or reset your password.");
+      } else {
+        Alert.alert("Sign in failed", "The email or password is incorrect.");
+      }
     } finally {
       setLoading(false);
     }
@@ -56,38 +76,59 @@ export default function SignInScreen() {
           {/* Sign-in form */}
           <View style={styles.formCard}>
             <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.sub}>Enter your phone number to receive a 6-digit code.</Text>
+            <Text style={styles.sub}>Use your @w.xyz address and password.</Text>
 
-            <Text style={styles.label}>Phone number</Text>
-            <View style={styles.row}>
-              <View style={styles.country}>
-                <TextInput
-                  style={styles.countryInput}
-                  value={country}
-                  onChangeText={setCountry}
-                  maxLength={5}
-                  keyboardType="phone-pad"
-                  testID="signin-country-input"
-                />
-              </View>
-              <View style={styles.phoneBox}>
-                <TextInput
-                  style={styles.phoneInput}
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Phone number"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="phone-pad"
-                  autoFocus
-                  testID="signin-phone-input"
-                />
-              </View>
+            <Text style={styles.label}>Email</Text>
+            <View style={styles.inputBox}>
+              <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.leadingIcon} />
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@w.xyz"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                testID="signin-email-input"
+              />
+            </View>
+
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.inputBox}>
+              <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} style={styles.leadingIcon} />
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Your password"
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry={!showPwd}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="current-password"
+                onSubmitEditing={onSignIn}
+                returnKeyType="go"
+                testID="signin-password-input"
+              />
+              <TouchableOpacity onPress={() => setShowPwd((v) => !v)} style={styles.eyeBtn} testID="toggle-pwd-visibility">
+                <Ionicons name={showPwd ? "eye-off" : "eye"} size={20} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
-              style={[styles.cta, (loading || phone.length < 6) && { opacity: 0.5 }]}
-              disabled={loading || phone.length < 6}
-              onPress={onContinue}
+              onPress={() => router.push({ pathname: "/(auth)/forgot-password", params: { email: email.trim() } })}
+              style={styles.forgot}
+              testID="forgot-password-link"
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.cta, (!canSubmit) && { opacity: 0.5 }]}
+              disabled={!canSubmit}
+              onPress={onSignIn}
               testID="signin-continue-btn"
               activeOpacity={0.85}
             >
@@ -100,7 +141,6 @@ export default function SignInScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Spacer pushes the bottom block down on tall screens; collapses on short ones */}
           <View style={{ flex: 1, minHeight: 24 }} />
 
           {/* Create account — always reachable via scroll */}
@@ -145,21 +185,28 @@ const styles = StyleSheet.create({
   formCard: { marginTop: 8 },
   title: { fontSize: 22, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
   sub: { fontSize: 14, color: colors.textMuted, marginTop: 6, marginBottom: 16, lineHeight: 20 },
-  label: { fontSize: 12, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 8, marginBottom: 8 },
-  row: { flexDirection: "row", gap: 10 },
-  country: { backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 10, justifyContent: "center", width: 72 },
-  countryInput: { fontSize: 16, color: colors.text, fontWeight: "600", textAlign: "center" },
-  phoneBox: { flex: 1, backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
-  phoneInput: { fontSize: 16, color: colors.text, paddingVertical: 14, fontWeight: "500" },
+  label: { fontSize: 12, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 12, marginBottom: 8 },
+
+  inputBox: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: colors.surface2, borderRadius: radius.lg,
+    paddingLeft: 12, paddingRight: 6,
+  },
+  leadingIcon: { marginRight: 8 },
+  input: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 14, fontWeight: "500", minWidth: 0 },
+  eyeBtn: { padding: 10 },
+
+  forgot: { alignSelf: "flex-end", marginTop: 10 },
+  forgotText: { color: colors.accent, fontWeight: "700", fontSize: 13 },
 
   cta: {
     flexDirection: "row", backgroundColor: colors.primary, padding: 16, borderRadius: radius.xl,
-    alignItems: "center", justifyContent: "center", gap: 8, marginTop: 22,
+    alignItems: "center", justifyContent: "center", gap: 8, marginTop: 18,
     shadowColor: colors.primary, shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4,
   },
   ctaText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
-  bottomWrap: { paddingHorizontal: space.xl, paddingBottom: 24, paddingTop: 12 },
+  bottomWrap: { paddingTop: 12 },
   divider: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
   line: { flex: 1, height: 1, backgroundColor: colors.surface2 },
   dividerText: { fontSize: 12, color: colors.textMuted, fontWeight: "700", letterSpacing: 0.5 },
