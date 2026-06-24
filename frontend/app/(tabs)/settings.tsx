@@ -17,7 +17,7 @@ export default function SettingsScreen() {
     } catch (e) {
       console.warn("signOut error:", e);
     }
-    router.replace("/(auth)/welcome");
+    router.replace("/(auth)/signin");
   };
 
   return (
@@ -40,7 +40,8 @@ export default function SettingsScreen() {
         <View style={styles.group}>
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
-          <Row icon="lock-closed" label="Privacy" />
+          <Row icon="shield-checkmark" label="Privacy Policy" onPress={() => router.push("/legal/privacy")} testID="row-privacy" />
+          <Row icon="document-text" label="Terms of Service" onPress={() => router.push("/legal/terms")} testID="row-terms" />
           <Row icon="color-palette" label="Theme" hint="W" />
           <Row icon="help-circle" label="Help & Support" />
           <Row icon="information-circle" label="About W" hint="v1.0" />

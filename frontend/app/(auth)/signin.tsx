@@ -116,7 +116,13 @@ export default function SignInScreen() {
             <Ionicons name="person-add-outline" size={18} color={colors.primary} />
             <Text style={styles.createText}>Create an account</Text>
           </TouchableOpacity>
-          <Text style={styles.legal}>By continuing you agree to W Terms & Privacy.</Text>
+          <Text style={styles.legal}>
+            By continuing you agree to W{" "}
+            <Text style={styles.legalLink} onPress={() => router.push("/legal/terms")}>Terms</Text>
+            {" & "}
+            <Text style={styles.legalLink} onPress={() => router.push("/legal/privacy")}>Privacy</Text>
+            .
+          </Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -166,4 +172,5 @@ const styles = StyleSheet.create({
   },
   createText: { color: colors.primary, fontSize: 16, fontWeight: "800" },
   legal: { textAlign: "center", color: colors.textMuted, fontSize: 11, marginTop: 12 },
+  legalLink: { color: colors.accent, fontWeight: "700", textDecorationLine: "underline" },
 });
