@@ -71,7 +71,7 @@ export default function SignInScreen() {
               style={styles.brandLogo}
               resizeMode="contain"
             />
-            <Text style={styles.tag}>Next Generation of Webmail</Text>
+            <Text style={styles.tag}>Webmail, Reimagined.</Text>
           </View>
 
           {/* Sign-in form */}
@@ -80,7 +80,7 @@ export default function SignInScreen() {
 
             <Text style={styles.label}>Email Address</Text>
             <View style={styles.inputBox}>
-              <Ionicons name="at-outline" size={18} color={colors.textMuted} style={styles.leadingIcon} />
+              <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.leadingIcon} />
               <TextInput
                 style={styles.input}
                 value={email}
