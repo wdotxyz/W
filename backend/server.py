@@ -6,7 +6,7 @@ from core.config import AI_USER_ID
 from core.db import db, logger, mongo_client
 from core.security import now_iso
 from core.ws import websocket_endpoint
-from routers import auth, billing, calls, chats, mail, statuses
+from routers import auth, billing, calls, chats, mail, statuses, ai as ai_router
 
 app = FastAPI()
 api_router = APIRouter(prefix='/api')
@@ -18,6 +18,7 @@ api_router.include_router(mail.router)
 api_router.include_router(billing.router)
 api_router.include_router(calls.router)
 api_router.include_router(statuses.router)
+api_router.include_router(ai_router.router)
 
 
 @api_router.get('/')

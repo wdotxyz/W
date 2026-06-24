@@ -12,6 +12,7 @@ import * as FileSystem from "expo-file-system";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import BlueCheck from "../../src/components/BlueCheck";
+import SmartReplyChips from "../../src/components/SmartReplyChips";
 import * as WebBrowser from "expo-web-browser";
 import { Avatar } from "../(tabs)/chats";
 import { colors, radius, space } from "../../src/theme";
@@ -217,7 +218,16 @@ export default function ChatScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.inputBar}>
+            <>
+              {!isAi && messages.length > 0 && messages[messages.length - 1]?.sender_id !== user?.id && text.trim().length === 0 && (
+                <SmartReplyChips
+                  chatId={id as string}
+                  mode="chat"
+                  onSelect={(t) => setText(t)}
+                  testID="chat-smart-replies"
+                />
+              )}
+              <View style={styles.inputBar}>
               <TouchableOpacity style={styles.iconBtn} onPress={onPickImage} testID="attach-image-btn">
                 <Ionicons name="image" size={22} color={colors.accent} />
               </TouchableOpacity>
@@ -240,6 +250,7 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               )}
             </View>
+            </>
           )}
         </KeyboardAvoidingView>
       </ImageBackground>

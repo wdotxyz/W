@@ -160,7 +160,7 @@ export default function SignInScreen() {
               <Text style={styles.createText}>Create an account</Text>
             </TouchableOpacity>
             <Text style={styles.legal}>
-              By continuing you agree to W{" "}
+              By continuing you agree to W Platforms{" "}
               <Text style={styles.legalLink} onPress={() => router.push("/legal/terms")}>Terms</Text>
               {" & "}
               <Text style={styles.legalLink} onPress={() => router.push("/legal/privacy")}>Privacy</Text>

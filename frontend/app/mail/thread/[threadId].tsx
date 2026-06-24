@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import { api } from "../../../src/api";
 import BlueCheck from "../../../src/components/BlueCheck";
+import SmartReplyChips from "../../../src/components/SmartReplyChips";
 import { colors, radius, space } from "../../../src/theme";
 
 type Mail = any;
@@ -22,6 +23,8 @@ export default function ThreadView() {
   const [starred, setStarred] = useState(false);
   const [ghostMail, setGhostMail] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [summary, setSummary] = useState<{ summary: string; action_items: string[] } | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
   const closedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -70,6 +73,30 @@ export default function ThreadView() {
         subject: m.subject?.toLowerCase().startsWith("re:") ? m.subject : `Re: ${m.subject}`,
         inReplyTo: m.message_id || "",
         threadId: m.thread_id || threadId,
+      },
+    });
+  };
+
+  const onSummarize = async () => {
+    setSummarizing(true);
+    try {
+      const res = await api<{ summary: string; action_items: string[] }>(`/ai/summarize-thread/${threadId}`, { method: "POST" });
+      setSummary(res);
+    } catch (e: any) { Alert.alert("Couldn't summarize", e.message); }
+    finally { setSummarizing(false); }
+  };
+
+  const onPickSmartReply = (text: string) => {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    router.push({
+      pathname: "/mail/compose",
+      params: {
+        to: last.from_addr,
+        subject: last.subject?.toLowerCase().startsWith("re:") ? last.subject : `Re: ${last.subject}`,
+        inReplyTo: last.message_id || "",
+        threadId: last.thread_id || threadId,
+        body: text,
       },
     });
   };
@@ -124,6 +151,15 @@ export default function ThreadView() {
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{subject}</Text>
         <TouchableOpacity
+          onPress={onSummarize}
+          disabled={summarizing}
+          style={[styles.summarizeBtn, summarizing && { opacity: 0.6 }]}
+          testID="thread-summarize"
+          activeOpacity={0.75}
+        >
+          {summarizing ? <ActivityIndicator color={colors.accent} size="small" /> : <Ionicons name="sparkles" size={16} color={colors.accent} />}
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={onStar}
           style={[styles.starBtn, starred && styles.starBtnOn]}
           testID="thread-star"
@@ -141,6 +177,31 @@ export default function ThreadView() {
             <Text style={styles.ghostTitle}>Ghost Mail</Text>
             <Text style={styles.ghostSub}>This thread vanishes when you close it. Tap <Text style={styles.ghostBold}>Save</Text> to keep it.</Text>
           </View>
+        </View>
+      )}
+
+      {summary && (summary.summary || summary.action_items.length > 0) && (
+        <View style={styles.summaryCard} testID="thread-summary-card">
+          <View style={styles.summaryHeader}>
+            <Ionicons name="sparkles" size={14} color={colors.accent} />
+            <Text style={styles.summaryHeaderText}>W AI summary</Text>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity onPress={() => setSummary(null)} hitSlop={8} testID="summary-dismiss">
+              <Ionicons name="close" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          {!!summary.summary && <Text style={styles.summaryText}>{summary.summary}</Text>}
+          {summary.action_items.length > 0 && (
+            <View style={{ marginTop: 8 }}>
+              <Text style={styles.summaryActionsLabel}>Action items</Text>
+              {summary.action_items.map((it, i) => (
+                <View key={i} style={styles.actionItemRow}>
+                  <Ionicons name="checkmark-circle-outline" size={14} color={colors.primary} />
+                  <Text style={styles.actionItemText}>{it}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -197,6 +258,16 @@ export default function ThreadView() {
             </TouchableOpacity>
           </View>
         ))}
+        {messages.length > 0 && (
+          <View style={{ marginTop: 16 }}>
+            <SmartReplyChips
+              messages={messages.map((m: Mail) => ({ role: "them" as const, text: `From ${m.from_name || m.from_addr}: ${m.body || ""}` }))}
+              mode="mail"
+              onSelect={onPickSmartReply}
+              testID="mail-smart-replies"
+            />
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -210,6 +281,14 @@ const styles = StyleSheet.create({
   starBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
   starBtnOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   starText: { fontWeight: "700", color: colors.primary, fontSize: 13 },
+  summarizeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#E8F5F7", borderWidth: 1, borderColor: "#B3E0E8", marginRight: 4 },
+  summaryCard: { marginHorizontal: space.lg, marginTop: 10, padding: 14, backgroundColor: "#F1FAFC", borderRadius: radius.lg, borderWidth: 1, borderColor: "#B3E0E8" },
+  summaryHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
+  summaryHeaderText: { fontSize: 11, fontWeight: "800", color: colors.accent, textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryText: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  summaryActionsLabel: { fontSize: 11, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
+  actionItemRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 4 },
+  actionItemText: { flex: 1, fontSize: 13.5, color: colors.text, lineHeight: 19 },
   ghostBanner: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#FFF4E5", padding: 12, marginHorizontal: space.lg, marginTop: 10, borderRadius: radius.lg, borderWidth: 1, borderColor: "#FFE0B2" },
   ghostEmoji: { fontSize: 26 },
   ghostTitle: { fontSize: 14, fontWeight: "800", color: "#7A4A00" },

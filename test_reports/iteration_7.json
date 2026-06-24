@@ -1,0 +1,41 @@
+{
+  "summary": "Full backend verification of the AI-Native trio (smart-reply, compose, rewrite, subject, summarize-thread). 21/21 tests passed against the public preview URL. All 6 endpoints return 200 with semantically rich Claude Sonnet 4.5 output (not stub/empty arrays) confirming the EMERGENT_LLM_KEY is live and working. Validation errors (400) and not-found cases (404) return the correct status codes. Auth is enforced (401 without Bearer). Zero password_hash leaks across any AI response. Regression endpoints (/auth/me, /billing/plans, /mail/inbox) all green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/ai/rewrite",
+        "issue": "Length guard uses `len(req.text.strip()) < 1` which is correct, but the route docstring/spec says '400 on empty text'. Whitespace-only strings ARE correctly rejected with 400 (verified). No bug, just noting the spec was met via .strip()."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_endpoints.py",
+    "/app/test_reports/pytest/ai_endpoints_results.xml"
+  ],
+  "action_items": [
+    "None — the AI trio is production-ready from a backend contract standpoint. Safe to wire up the frontend UI."
+  ],
+  "critical_code_review_comments": [
+    "services/ai_assist.py:_ask_claude correctly guards on missing EMERGENT_LLM_KEY by returning '' — so endpoints degrade to empty suggestions / 502 rather than crashing. Verified by inspection.",
+    "services/ai_assist.py:_extract_json has a robust fallback (regex for ```json fences, then first {/[ scan, then json.loads inside try/except) which means malformed Claude output downgrades to empty list / empty dict — no 500. Smart-reply generic test confirms this contract.",
+    "routers/ai.py:summarize_thread query uses `$or: [{owner_id: user.id}, {to_addrs: {$in: addrs}}]` — handles both legacy (owner_id) and address-based ownership. Confirmed working: bogus thread → 404, valid → 200 with summary + action_items.",
+    "routers/ai.py:smart_reply_for_chat returns {suggestions: []} when chat exists but has no text messages — graceful empty response, no 500. Membership check via {'id': chat_id, 'member_ids': user['id']} also correctly returns 404 for non-member chats.",
+    "Sample outputs observed (LLM is genuinely useful):\n  • smart-reply 'move 3pm to 4pm': ['Yes, 4pm works for me!', \"Sure, I'll update my calendar.\", 'No problem, see you at 4pm.']\n  • compose-mail 'thank Sam for intro': subject 'Thank you for the introduction – Call next week?', body opens with 'Hi Sam, Thank you so much for making the introduction...'\n  • subject suggestions for Q4 roadmap body: ['Q4 Roadmap Deck - Feedback by Friday', 'Following Up: Q4 Roadmap Review', 'Quick Feedback Needed on Q4 Deck']\n  • thread summary for 2-message inbound chain: clean 2-sentence recap + 2 concrete action items."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_endpoints.py (new — 21 tests covering all 6 AI endpoints + regression)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "N/A (not requested)"},
+  "seed_data_creation": "Fresh user per run (PHONE=+1666<timestamp>, handle=aitest<timestamp>). Two inbound emails seeded for summarize-thread test. test_99_cleanup wipes users/handles/otps/emails/messages/chats afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_ai_endpoints.py is the canonical AI regression suite. Re-runs in ~37s including 8 Claude calls. Run with: `pytest /app/backend/tests/test_ai_endpoints.py -v -s`. If EMERGENT_LLM_KEY is rotated, test_10/21/30/40/50/61 will still pass (status 200, empty list/text allowed) but the soft-print output will be empty — that's the signal to check the key.",
+  "rca_of_issue": "N/A — no bugs found. Initial test_21 failure was a test-script defect on my end: `POST /chats/{chat_id}/messages` requires `chat_id` in the body per SendMessageReq schema (routers/chats.py:64, models/schemas.py:83). Fixed in test and rerun all-green."
+}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -18,16 +18,20 @@ type Attachment = { filename: string; type: string; content_b64: string; size: n
 export default function Compose() {
   const router = useRouter();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ to?: string; subject?: string; inReplyTo?: string; threadId?: string; draftId?: string }>();
+  const params = useLocalSearchParams<{ to?: string; subject?: string; inReplyTo?: string; threadId?: string; draftId?: string; body?: string }>();
   const [to, setTo] = useState(params.to || "");
   const [subject, setSubject] = useState(params.subject || "");
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(params.body || "");
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [sending, setSending] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftId, setDraftId] = useState<string | undefined>(params.draftId);
   const [draftSaved, setDraftSaved] = useState<string | null>(null);
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+  const [aiPromptOpen, setAiPromptOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
   const autoSaveRef = useRef<any>(null);
   const initialLoad = useRef(true);
 
@@ -90,6 +94,51 @@ export default function Compose() {
   };
 
   const removeAtt = (i: number) => setAtts((p) => p.filter((_, idx) => idx !== i));
+
+  // ---------------- AI Compose / Rewrite ----------------
+  const onAiDraft = async () => {
+    const p = aiPrompt.trim();
+    if (p.length < 3) { Alert.alert("Tell W AI what to write", "Add a quick prompt like 'thank Sam for the intro' or 'follow up on Friday meeting'."); return; }
+    setAiBusy("draft");
+    setAiPromptOpen(false);
+    setAiMenuOpen(false);
+    try {
+      const res = await api<{ subject: string; body: string }>("/ai/compose-mail", {
+        method: "POST",
+        body: JSON.stringify({ prompt: p, tone: "professional" }),
+      });
+      if (res.subject && !subject.trim()) setSubject(res.subject);
+      setBody((prev) => prev.trim() ? `${prev.trim()}\n\n${res.body}` : res.body);
+      setAiPrompt("");
+    } catch (e: any) { Alert.alert("AI couldn't draft", e.message); }
+    finally { setAiBusy(null); }
+  };
+
+  const onRewrite = async (mode: "professional" | "friendly" | "shorten" | "expand" | "fix") => {
+    if (!body.trim()) { Alert.alert("Write something first", "Add some text in the body for W AI to rewrite."); return; }
+    setAiBusy(mode);
+    setAiMenuOpen(false);
+    try {
+      const res = await api<{ text: string }>("/ai/rewrite", {
+        method: "POST",
+        body: JSON.stringify({ text: body, mode }),
+      });
+      setBody(res.text);
+    } catch (e: any) { Alert.alert("AI couldn't rewrite", e.message); }
+    finally { setAiBusy(null); }
+  };
+
+  const onSuggestSubject = async () => {
+    if (!body.trim() || body.trim().length < 5) { Alert.alert("Add a body first", "Write a bit of body content and W AI will suggest 3 subjects."); return; }
+    setAiBusy("subject");
+    setAiMenuOpen(false);
+    try {
+      const res = await api<{ subjects: string[] }>("/ai/subject", { method: "POST", body: JSON.stringify({ body }) });
+      if (!res.subjects?.length) { Alert.alert("No suggestions returned"); return; }
+      Alert.alert("Pick a subject", "", res.subjects.map((s) => ({ text: s, onPress: () => setSubject(s) })).concat([{ text: "Cancel", style: "cancel" as const, onPress: () => {} }]));
+    } catch (e: any) { Alert.alert("AI couldn't suggest", e.message); }
+    finally { setAiBusy(null); }
+  };
 
   const onSend = async () => {
     const toList = to.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -186,6 +235,10 @@ export default function Compose() {
             </View>
           )}
           <View style={styles.attBar}>
+            <TouchableOpacity style={styles.attBtn} onPress={() => setAiMenuOpen(true)} testID="compose-ai-magic">
+              {aiBusy ? <ActivityIndicator color={colors.accent} size="small" /> : <Ionicons name="sparkles" size={18} color={colors.accent} />}
+              <Text style={styles.attBtnText}>{aiBusy ? "Thinking…" : "W AI"}</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.attBtn} onPress={addImage} testID="compose-attach-image">
               <Ionicons name="image" size={18} color={colors.accent} />
               <Text style={styles.attBtnText}>Photo</Text>
@@ -197,7 +250,82 @@ export default function Compose() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* AI Menu Modal */}
+      <Modal visible={aiMenuOpen} transparent animationType="fade" onRequestClose={() => setAiMenuOpen(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalBackdrop} onPress={() => setAiMenuOpen(false)} testID="ai-menu-backdrop">
+          <TouchableOpacity activeOpacity={1} style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Ionicons name="sparkles" size={20} color={colors.accent} />
+              <Text style={styles.sheetTitle}>W AI</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setAiMenuOpen(false)} testID="ai-menu-close"><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+            </View>
+            <Text style={styles.sheetSection}>Create</Text>
+            <AiOption icon="create" label="Draft for me" subtitle="One-line prompt → full email" onPress={() => { setAiMenuOpen(false); setAiPromptOpen(true); }} testID="ai-draft-open" />
+            <AiOption icon="reader" label="Suggest subject" subtitle="3 options from your body" onPress={onSuggestSubject} disabled={!body.trim()} testID="ai-suggest-subject" />
+            <Text style={styles.sheetSection}>Rewrite</Text>
+            <AiOption icon="briefcase" label="Make professional" onPress={() => onRewrite("professional")} disabled={!body.trim()} testID="ai-rewrite-pro" />
+            <AiOption icon="happy" label="Make friendly" onPress={() => onRewrite("friendly")} disabled={!body.trim()} testID="ai-rewrite-friendly" />
+            <AiOption icon="contract" label="Shorten" onPress={() => onRewrite("shorten")} disabled={!body.trim()} testID="ai-rewrite-shorten" />
+            <AiOption icon="expand" label="Expand" onPress={() => onRewrite("expand")} disabled={!body.trim()} testID="ai-rewrite-expand" />
+            <AiOption icon="checkmark-done" label="Fix grammar" onPress={() => onRewrite("fix")} disabled={!body.trim()} testID="ai-rewrite-fix" />
+            <View style={{ height: 20 }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* AI Draft Prompt Modal */}
+      <Modal visible={aiPromptOpen} transparent animationType="slide" onRequestClose={() => setAiPromptOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalBackdrop}>
+          <View style={styles.promptSheet}>
+            <View style={styles.sheetHeader}>
+              <Ionicons name="sparkles" size={20} color={colors.accent} />
+              <Text style={styles.sheetTitle}>Draft for me</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setAiPromptOpen(false)}><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+            </View>
+            <Text style={styles.promptHelp}>Describe what you want to write. Keep it short — like a text to a friend.</Text>
+            <TextInput
+              style={styles.promptInput}
+              value={aiPrompt}
+              onChangeText={setAiPrompt}
+              placeholder={"e.g. 'Thank Sam for the intro and propose a call next week'"}
+              placeholderTextColor={colors.textMuted}
+              multiline
+              autoFocus
+              testID="ai-prompt-input"
+            />
+            <TouchableOpacity style={[styles.aiSubmit, (!aiPrompt.trim() || aiBusy) && { opacity: 0.5 }]} onPress={onAiDraft} disabled={!aiPrompt.trim() || !!aiBusy} testID="ai-prompt-submit">
+              {aiBusy ? <ActivityIndicator color="#fff" /> : <>
+                <Ionicons name="sparkles" size={16} color="#fff" />
+                <Text style={styles.aiSubmitText}>Generate</Text>
+              </>}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function AiOption({ icon, label, subtitle, onPress, disabled, testID }: any) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.aiOption, disabled && { opacity: 0.4 }]}
+      testID={testID}
+      activeOpacity={0.7}
+    >
+      <View style={styles.aiOptionIcon}><Ionicons name={icon} size={18} color={colors.accent} /></View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.aiOptionLabel}>{label}</Text>
+        {!!subtitle && <Text style={styles.aiOptionSub}>{subtitle}</Text>}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
   );
 }
 
@@ -225,7 +353,24 @@ const styles = StyleSheet.create({
   attsWrap: { paddingHorizontal: space.lg, gap: 8, marginTop: 12 },
   attChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface2, padding: 10, borderRadius: radius.md },
   attName: { flex: 1, fontSize: 13, color: colors.text },
-  attBar: { flexDirection: "row", gap: 10, padding: space.lg },
+  attBar: { flexDirection: "row", gap: 10, padding: space.lg, flexWrap: "wrap" },
   attBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.pill, backgroundColor: colors.surface2 },
   attBtnText: { color: colors.text, fontWeight: "600" },
+  // AI modal
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: space.lg, paddingTop: 10 },
+  sheetHandle: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 14 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 8 },
+  sheetTitle: { fontSize: 18, fontWeight: "800", color: colors.text },
+  sheetSection: { fontSize: 11, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 14, marginBottom: 4 },
+  aiOption: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 4 },
+  aiOptionIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
+  aiOptionLabel: { fontSize: 15, fontWeight: "700", color: colors.text },
+  aiOptionSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  // Prompt sheet
+  promptSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: space.lg, gap: 12 },
+  promptHelp: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  promptInput: { backgroundColor: colors.surface2, borderRadius: radius.lg, padding: 14, fontSize: 15, color: colors.text, minHeight: 96, textAlignVertical: "top" },
+  aiSubmit: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary, paddingVertical: 14, borderRadius: radius.pill },
+  aiSubmitText: { color: "#fff", fontWeight: "800", fontSize: 15 },
 });

@@ -36,7 +36,7 @@ export default function Welcome() {
           <Text style={styles.ctaText}>Get started</Text>
           <Ionicons name="arrow-forward" size={20} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.legal}>By continuing you agree to W Terms & Privacy.</Text>
+        <Text style={styles.legal}>By continuing you agree to W Platforms Terms & Privacy.</Text>
       </View>
     </ImageBackground>
   );
