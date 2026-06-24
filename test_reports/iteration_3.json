@@ -1,0 +1,54 @@
+{
+  "summary": "Backend refactor verification (server.py -> core/ + models/ + services/ + routers/). Wrote /app/backend/tests/test_refactor_verification.py covering all groups from the review request: health, auth (send-otp, verify-otp w/ password, login w/ email+password, me, unauthorized), handle/mail (check-handle 4/6/admin, claim-handle, inbox/sent/drafts), chats (ai/start-chat, list, send text), billing (plans=3 tiers, billing/me with storage), statuses (post 24h, list my+contacts). Result: 18/19 PASSED. One real regression found: GET /api/auth/me leaks `password_hash` because core/security.py:get_current_user uses projection {'_id': 0} (does not exclude password_hash) and routers/auth.py:me() returns the dict as-is. Same leak applies to POST /api/auth/profile (update_profile returns `user` after .update()). Other endpoints that return user objects (verify-otp, login, reset_password) correctly pop password_hash so they are safe. Also flagged: the env now has Twilio credentials but Twilio rejects all US destinations with code 21408 (geo perm not enabled), so POST /api/auth/send-otp returns HTTP 400 in this environment for every test phone — NOT a refactor regression (code path is identical pre/post), but the documented 'DEV MODE' flow from /app/memory/test_credentials.md is broken in this environment. Tests work around it by reading the upsert-before-SMS OTP directly from db.otps. No 500s, no import errors. Backend logs clean except for the expected Twilio 400s.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/auth/me  (and POST /api/auth/profile)",
+        "issue": "Leaks `password_hash` in response. core/security.py:get_current_user (line 79) projects only {'_id': 0}, so user dict still contains password_hash. routers/auth.py:me() (line 273) and update_profile() (line 268-269) return that dict verbatim. Fix: either add `'password_hash': 0` to the projection in get_current_user, or pop it in me/update_profile (the latter is safer because /auth/2fa and /auth/set-password depend on user['password_hash'] being present).",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/send-otp",
+        "issue": "With current Twilio creds (real account, no US geo-perm), every send-otp returns HTTP 400 'SMS failed: Permission to send an SMS has not been enabled... (error 21408)'. Fallback to dev_otp only triggers on code 21608 ('unverified'). Either expand fallback (treat any TwilioRestException -> return dev_otp in non-prod) or revert TWILIO_* env vars to use dev mode per test_credentials.md. OTP IS still persisted to db.otps before the SMS attempt, so the verify-otp half of the flow works once OTP is known."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_refactor_verification.py",
+    "/app/test_reports/pytest/refactor_results.xml"
+  ],
+  "action_items": [
+    "FIX (security/critical): Strip password_hash from GET /api/auth/me and POST /api/auth/profile responses. Suggested patch in routers/auth.py:me() -> `user.pop('password_hash', None); return user`. Same in update_profile after the .update() call. Re-run /app/backend/tests/test_refactor_verification.py::TestAuth::test_auth_me_with_token to verify.",
+    "ENV (blocker for QA but not a code bug): Either remove TWILIO_ACCOUNT_SID/AUTH_TOKEN/PHONE_NUMBER from /app/backend/.env to restore documented DEV MODE (per /app/memory/test_credentials.md), or upgrade Twilio account to permit US SMS. Currently send-otp returns 400 for every phone, which will break the entire frontend phone+OTP signup flow end-to-end.",
+    "Optional: widen the Twilio fallback in routers/auth.py:send_otp so any TwilioRestException returns dev_otp instead of only code 21608 — would make the app gracefully degrade when SMS sending isn't permitted."
+  ],
+  "critical_code_review_comments": [
+    "core/security.py:get_current_user uses {'_id': 0} projection only — should also exclude password_hash; any endpoint that returns `user` (the Depends result) directly will leak the hash. me() and update_profile() currently do.",
+    "Module split looks clean: server.py is 77 lines, models/schemas.py has all Pydantic, routers grouped logically. Imports resolve correctly (verified no startup errors in /var/log/supervisor/backend.err.log).",
+    "WebSocket is mounted on `app` directly (not through api_router) which is correct because FastAPI's APIRouter websocket prefixing has historically been brittle.",
+    "Startup indexes (db.users, db.chats, db.messages, db.emails, db.statuses) all re-created in server.py:on_startup — no data loss risk.",
+    "billing/plans is correctly public (no auth); billing/me requires auth and returns storage info per tier — verified.",
+    "statuses expires_at is exactly 24h after created_at — verified within 0.1h tolerance."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_refactor_verification.py (new)",
+    "/app/test_reports/pytest/refactor_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "18/19 (94.7%) — 1 security regression: password_hash leak via /api/auth/me",
+    "frontend": "N/A (skipped per review request)"
+  },
+  "seed_data_creation": "Created a single disposable user via verify-otp with phone +12028670<ts> and password 'Secret123!', claimed handle 'tester<ts>' -> email_address tester<ts>@w.xyz, then DELETE /api/auth/me at session-end fixture removed user + their chats/emails/statuses. No leftover test data.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Re-run: `pytest /app/backend/tests/test_refactor_verification.py -v`. Test is idempotent (uses _TS suffix for phone/handle) and self-cleans via the session fixture that calls DELETE /api/auth/me. Workaround for Twilio is via direct MongoDB read of db.otps. PROTECTED: do not modify metro.config.js/app.json/babel.config.js — and remember MONGO_URL/DB_NAME live in /app/backend/.env. EXPO_PUBLIC_BACKEND_URL is in /app/frontend/.env (NOT EXPO_BACKEND_URL).",
+  "rca_of_issue": "password_hash leak RCA: During the refactor, the user lookup was extracted from inline server.py code into core/security.py:get_current_user. The old monolithic me() endpoint likely projected password_hash out at call site, but in the refactor get_current_user uses only {'_id': 0}. routers/auth.py:me() returns the dict verbatim. Reproduction: claim a handle, set a password via verify-otp w/ password, call GET /api/auth/me with Bearer — response JSON contains 'password_hash': '<bcrypt hash>'. Mitigation: 1-line fix in me() and update_profile(): `user.pop('password_hash', None)` before returning. Keep get_current_user returning the full dict because /auth/2fa, /auth/set-password depend on user.get('password_hash') for verification."
+}
