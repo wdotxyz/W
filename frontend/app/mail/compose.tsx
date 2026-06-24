@@ -27,6 +27,7 @@ export default function Compose() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftId, setDraftId] = useState<string | undefined>(params.draftId);
   const [draftSaved, setDraftSaved] = useState<string | null>(null);
+  const [includeSignature, setIncludeSignature] = useState<boolean>(true);
   const autoSaveRef = useRef<any>(null);
   const initialLoad = useRef(true);
 
@@ -102,6 +103,7 @@ export default function Compose() {
         body: JSON.stringify({
           to: toList, subject: subject.trim(), body, attachments: atts,
           draft_id: draftId, in_reply_to: params.inReplyTo, thread_id: params.threadId,
+          include_signature: includeSignature,
         }),
       });
       if (res.delivery_status === "sent") Alert.alert("Sent ✓", "Your email is on its way.");
@@ -153,7 +155,22 @@ export default function Compose() {
           </View>
           <TextInput style={styles.body} value={body} onChangeText={setBody} placeholder="Write your email…" placeholderTextColor={colors.textMuted} multiline textAlignVertical="top" testID="compose-body" />
           {!!user?.signature && (
-            <Text style={styles.sigHint} testID="signature-hint">Your signature will be appended automatically.</Text>
+            <TouchableOpacity
+              onPress={() => setIncludeSignature(v => !v)}
+              activeOpacity={0.7}
+              style={styles.sigToggleRow}
+              testID="signature-toggle"
+            >
+              <View style={[styles.sigCheckbox, includeSignature && styles.sigCheckboxOn]}>
+                {includeSignature && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </View>
+              <Text style={styles.sigToggleText}>
+                {includeSignature ? "Signature will be appended" : "Signature is off for this email"}
+              </Text>
+              <Text style={styles.sigPeek} numberOfLines={1}>
+                {includeSignature ? (user.signature as any) : ""}
+              </Text>
+            </TouchableOpacity>
           )}
           {!!atts.length && (
             <View style={styles.attsWrap}>
@@ -200,6 +217,11 @@ const styles = StyleSheet.create({
   fieldInput: { flex: 1, fontSize: 15, color: colors.text },
   body: { padding: space.lg, fontSize: 15, color: colors.text, minHeight: 220, lineHeight: 22 },
   sigHint: { fontSize: 12, color: colors.textMuted, paddingHorizontal: space.lg, fontStyle: "italic" },
+  sigToggleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginHorizontal: space.lg, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.surface2, borderRadius: radius.lg },
+  sigCheckbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: colors.textMuted, alignItems: "center", justifyContent: "center" },
+  sigCheckboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  sigToggleText: { fontSize: 12.5, fontWeight: "700", color: colors.text },
+  sigPeek: { flex: 1, fontSize: 11.5, color: colors.textMuted, fontStyle: "italic", textAlign: "right" },
   attsWrap: { paddingHorizontal: space.lg, gap: 8, marginTop: 12 },
   attChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface2, padding: 10, borderRadius: radius.md },
   attName: { flex: 1, fontSize: 13, color: colors.text },

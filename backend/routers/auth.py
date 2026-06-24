@@ -1,5 +1,6 @@
 """Authentication, profile, and user-listing endpoints."""
 import random
+import re
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,10 +15,11 @@ from core.security import (
     get_current_user, hash_password, make_token, now_iso, verify_password,
 )
 from models.schemas import (
-    ForgotPasswordReq, LoginReq, NotifSettingsReq, ProfileReq,
-    ResetPasswordReq, SendOtpReq, SetPasswordReq, SignatureReq,
-    TwoFactorToggleReq, VerifyOtpReq,
+    AutoReplyReq, ForgotPasswordReq, LoginReq, NotifSettingsReq, ProfileReq,
+    RecoveryEmailReq, RecoveryEmailVerifyReq, ResetPasswordReq,
+    SendOtpReq, SetPasswordReq, SignatureReq, TwoFactorToggleReq, VerifyOtpReq,
 )
+from services.sendgrid_mail import send_system_email
 
 import uuid
 
@@ -208,32 +210,83 @@ async def set_password(req: SetPasswordReq, user=Depends(get_current_user)):
 @router.post('/auth/forgot-password')
 async def forgot_password(req: ForgotPasswordReq):
     email = (req.email or '').strip().lower()
-    if email and '@' in email:
-        user = await db.users.find_one({'email_address': email}, {'_id': 0})
-        if user and user.get('phone'):
+    if not email or '@' not in email:
+        return {'success': True}
+    user = await db.users.find_one({'email_address': email}, {'_id': 0})
+    if not user:
+        return {'success': True}
+    try:
+        otp = f"{random.randint(0, 999999):06d}"
+        now = _utcnow()
+        await db.users.update_one(
+            {'id': user['id']},
+            {'$set': {'password_reset_otp': otp, 'password_reset_otp_at': now.isoformat()}},
+        )
+
+        recovery_email = user.get('recovery_email') if user.get('recovery_email_verified') else None
+        sent_via = None
+
+        if recovery_email:
+            text_body = (
+                f"Hi {user.get('name') or 'there'},\n\n"
+                f"Use this code to reset the password for your W account ({email}):\n\n"
+                f"    {otp}\n\n"
+                f"It expires in 15 minutes. If you didn't request this, ignore this message and change your W password.\n\n"
+                f"\u2014 The W team"
+            )
+            html_body = (
+                f"<p>Hi {user.get('name') or 'there'},</p>"
+                f"<p>Use this code to reset the password for your W account <b>{email}</b>:</p>"
+                f"<p style='font-size:28px;letter-spacing:6px;font-weight:800;color:#0A7A90;'>{otp}</p>"
+                f"<p>It expires in 15 minutes. If you didn't request this, ignore this message.</p>"
+            )
+            ok = send_system_email(
+                to_email=recovery_email,
+                subject='Reset your W password',
+                text_body=text_body,
+                html_body=html_body,
+                from_name='W Security',
+            )
+            if ok:
+                sent_via = 'recovery_email'
+                return {'success': True, 'sent_via': 'recovery_email',
+                        'recovery_email_hint': _mask_email(recovery_email)}
+
+        if user.get('phone') and TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
+            # Also write phone-keyed OTP for backwards compatibility
+            await db.otps.update_one(
+                {'phone': user['phone']},
+                {'$set': {'phone': user['phone'], 'otp': otp, 'created_at': now.isoformat(),
+                          'purpose': 'password_reset'}},
+                upsert=True,
+            )
             try:
-                otp = f"{random.randint(0, 999999):06d}"
-                await db.otps.update_one(
-                    {'phone': user['phone']},
-                    {'$set': {'phone': user['phone'], 'otp': otp, 'created_at': now_iso(),
-                              'purpose': 'password_reset'}},
-                    upsert=True,
+                from twilio.rest import Client as _Twilio
+                _Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).messages.create(
+                    to=user['phone'], from_=TWILIO_PHONE_NUMBER,
+                    body=f"Your W password reset code is {otp}. Valid for 15 minutes.",
                 )
-                if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
-                    try:
-                        from twilio.rest import Client as _Twilio
-                        _Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).messages.create(
-                            to=user['phone'], from_=TWILIO_PHONE_NUMBER,
-                            body=f"Your W password reset code is {otp}. Valid for 10 minutes.",
-                        )
-                    except Exception as e:
-                        logger.warning(f'Twilio reset SMS failed: {e}')
-                        return {'success': True, 'dev_otp': otp}
-                else:
-                    return {'success': True, 'dev_otp': otp}
+                return {'success': True, 'sent_via': 'sms', 'phone_hint': _mask_phone(user['phone'])}
             except Exception as e:
-                logger.exception(f'forgot-password error: {e}')
+                logger.warning(f'Twilio reset SMS failed: {e}')
+
+        # Dev / unconfigured fallback
+        return {'success': True, 'dev_otp': otp, 'sent_via': sent_via or 'dev'}
+    except Exception as e:
+        logger.exception(f'forgot-password error: {e}')
     return {'success': True}
+
+
+def _mask_email(em: str) -> str:
+    try:
+        local, domain = em.split('@', 1)
+    except Exception:
+        return em
+    if len(local) <= 2:
+        masked = local[0] + '*'
+    else:
+        masked = local[0] + ('*' * (len(local) - 2)) + local[-1]
+    return f'{masked}@{domain}'
 
 
 @router.post('/auth/reset-password')
@@ -242,20 +295,39 @@ async def reset_password(req: ResetPasswordReq):
     if not email or '@' not in email:
         raise HTTPException(401, GENERIC_AUTH_ERROR)
     user = await db.users.find_one({'email_address': email}, {'_id': 0})
-    if not user or not user.get('phone'):
+    if not user:
         raise HTTPException(401, GENERIC_AUTH_ERROR)
-    rec = await db.otps.find_one({'phone': user['phone']}, {'_id': 0})
-    if not rec or rec.get('otp') != req.otp:
+    submitted = (req.otp or '').strip()
+    ok = False
+
+    # 1. Try user-level OTP (recovery email / dev fallback). 15-min validity.
+    stored = user.get('password_reset_otp')
+    sent_at = _parse_dt(user.get('password_reset_otp_at'))
+    if stored and submitted == stored:
+        if sent_at and (_utcnow() - sent_at) > timedelta(minutes=15):
+            raise HTTPException(401, 'Reset code expired. Request a new one.')
+        ok = True
+
+    # 2. Fall back to legacy phone-keyed OTP (SMS).
+    if not ok and user.get('phone'):
+        rec = await db.otps.find_one({'phone': user['phone']}, {'_id': 0})
+        if rec and rec.get('otp') == submitted:
+            ok = True
+
+    if not ok:
         raise HTTPException(401, GENERIC_AUTH_ERROR)
+
     new_hash = hash_password(req.new_password)
     await db.users.update_one(
         {'id': user['id']},
         {'$set': {'password_hash': new_hash, 'failed_logins': 0,
                   'password_updated_at': now_iso(), 'last_login_at': now_iso()},
          '$unset': {'failed_login_window_started_at': '', 'lock_until': '',
-                    'deactivated': '', 'deactivated_at': ''}},
+                    'deactivated': '', 'deactivated_at': '',
+                    'password_reset_otp': '', 'password_reset_otp_at': ''}},
     )
-    await db.otps.delete_one({'phone': user['phone']})
+    if user.get('phone'):
+        await db.otps.delete_one({'phone': user['phone']})
     refreshed = await db.users.find_one({'id': user['id']}, {'_id': 0, 'password_hash': 0})
     token = make_token(user['id'])
     return {'token': token, 'user': refreshed, 'is_new': False, 'reactivated': False}
@@ -334,6 +406,110 @@ async def update_signature(req: SignatureReq, user=Depends(get_current_user)):
     sig = (req.signature or '')[:1000]
     await db.users.update_one({'id': user['id']}, {'$set': {'signature': sig}})
     return {'signature': sig}
+
+
+# -------------------- Recovery Email (external, e.g. Gmail) --------------------
+EMAIL_RE = re.compile(r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$')
+
+
+@router.post('/auth/recovery-email/set')
+async def set_recovery_email(req: RecoveryEmailReq, user=Depends(get_current_user)):
+    email = (req.email or '').strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "That doesn't look like a valid email address.")
+    if user.get('email_address') and email == user['email_address'].lower():
+        raise HTTPException(400, 'Recovery email cannot be the same as your W address.')
+    otp = f"{random.randint(0, 999999):06d}"
+    now = _utcnow()
+    await db.users.update_one(
+        {'id': user['id']},
+        {'$set': {
+            'recovery_email_pending': email,
+            'recovery_email_otp': otp,
+            'recovery_email_otp_at': now.isoformat(),
+        }},
+    )
+    body_text = (
+        f"Hi {user.get('name') or 'there'},\n\n"
+        f"Use this code to confirm {email} as the recovery email for your W account:\n\n"
+        f"    {otp}\n\n"
+        f"It expires in 15 minutes. If you didn't request this, ignore this message.\n\n"
+        f"\u2014 The W team"
+    )
+    body_html = (
+        f"<p>Hi {user.get('name') or 'there'},</p>"
+        f"<p>Use this code to confirm <b>{email}</b> as the recovery email for your W account:</p>"
+        f"<p style='font-size:28px;letter-spacing:6px;font-weight:800;color:#0A7A90;'>{otp}</p>"
+        f"<p>It expires in 15 minutes. If you didn't request this, ignore this message.</p>"
+        f"<p style='color:#5B7083;font-size:12px;'>\u2014 The W team</p>"
+    )
+    sent = send_system_email(
+        to_email=email,
+        subject='Verify your W recovery email',
+        text_body=body_text,
+        html_body=body_html,
+        from_name='W Security',
+    )
+    resp: dict = {'sent': sent, 'recovery_email_pending': email}
+    if not sent:
+        resp['dev_otp'] = otp
+    return resp
+
+
+@router.post('/auth/recovery-email/verify')
+async def verify_recovery_email(req: RecoveryEmailVerifyReq, user=Depends(get_current_user)):
+    pending = user.get('recovery_email_pending')
+    stored = user.get('recovery_email_otp')
+    sent_at = _parse_dt(user.get('recovery_email_otp_at'))
+    if not pending or not stored:
+        raise HTTPException(400, 'No recovery email pending. Add one first.')
+    if sent_at and (_utcnow() - sent_at) > timedelta(minutes=15):
+        raise HTTPException(400, 'Code expired. Send a new one.')
+    if (req.otp or '').strip() != stored:
+        raise HTTPException(401, 'Incorrect code.')
+    await db.users.update_one(
+        {'id': user['id']},
+        {'$set': {'recovery_email': pending,
+                  'recovery_email_verified': True,
+                  'recovery_email_verified_at': now_iso()},
+         '$unset': {'recovery_email_pending': '', 'recovery_email_otp': '', 'recovery_email_otp_at': ''}},
+    )
+    return {'recovery_email': pending, 'verified': True}
+
+
+@router.delete('/auth/recovery-email')
+async def remove_recovery_email(user=Depends(get_current_user)):
+    await db.users.update_one(
+        {'id': user['id']},
+        {'$unset': {'recovery_email': '', 'recovery_email_verified': '',
+                    'recovery_email_verified_at': '',
+                    'recovery_email_pending': '', 'recovery_email_otp': '', 'recovery_email_otp_at': ''}},
+    )
+    return {'recovery_email': None, 'verified': False}
+
+
+# -------------------- Auto-reply (Out of Office) --------------------
+@router.get('/auth/auto-reply')
+async def get_auto_reply(user=Depends(get_current_user)):
+    return user.get('auto_reply') or {'enabled': False, 'subject': '', 'body': '', 'start_at': None, 'end_at': None}
+
+
+@router.patch('/auth/auto-reply')
+async def update_auto_reply(req: AutoReplyReq, user=Depends(get_current_user)):
+    settings = {
+        'enabled': bool(req.enabled),
+        'subject': (req.subject or '').strip()[:200],
+        'body': (req.body or '').strip()[:4000],
+        'start_at': req.start_at,
+        'end_at': req.end_at,
+        'updated_at': now_iso(),
+    }
+    if settings['enabled'] and not settings['body']:
+        raise HTTPException(400, 'Add a reply message before enabling auto-reply.')
+    if settings['enabled'] and not settings['subject']:
+        settings['subject'] = 'Out of office'
+    await db.users.update_one({'id': user['id']}, {'$set': {'auto_reply': settings}})
+    return settings
 
 
 @router.get('/users')

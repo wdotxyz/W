@@ -76,6 +76,8 @@ export default function SettingsScreen() {
           ) : null}
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
+          <Row icon="paper-plane" label="Auto-reply" hint={(user as any)?.auto_reply?.enabled ? "On" : "Off"} onPress={() => router.push("/auto-reply")} testID="row-auto-reply" />
+          <Row icon="key" label="Recovery email" hint={(user as any)?.recovery_email ? "Verified" : "Not set"} onPress={() => router.push("/recovery-email")} testID="row-recovery-email" />
           <Row icon="shield-checkmark" label="Two-step verification" hint={user?.two_factor_enabled ? "On" : "Off"} onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
           <Row icon="lock-closed" label="Privacy Policy" onPress={() => router.push("/legal/privacy")} testID="row-privacy" />
           <Row icon="document-text" label="Terms of Service" onPress={() => router.push("/legal/terms")} testID="row-terms" />

@@ -100,6 +100,7 @@ class ComposeMailReq(BaseModel):
     draft_id: Optional[str] = None
     in_reply_to: Optional[str] = None
     thread_id: Optional[str] = None
+    include_signature: bool = True
 
 
 class DraftReq(BaseModel):
@@ -119,3 +120,19 @@ class StatusReq(BaseModel):
     type: str = 'text'
     content: str
     background: Optional[str] = None
+
+
+class RecoveryEmailReq(BaseModel):
+    email: str
+
+
+class RecoveryEmailVerifyReq(BaseModel):
+    otp: str
+
+
+class AutoReplyReq(BaseModel):
+    enabled: bool
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None

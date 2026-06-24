@@ -3,6 +3,7 @@ import base64
 import json
 import re
 import uuid
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -11,7 +12,7 @@ from core.config import (
     HANDLE_HARD_MIN, HANDLE_MAX, MAIL_DOMAIN, SENDGRID_API_KEY,
 )
 from core.db import db, logger
-from core.security import get_current_user, now_iso
+from core.security import _utcnow, get_current_user, now_iso
 from core.ws import ws_manager
 from models.schemas import ClaimHandleReq, ComposeMailReq, DraftReq
 from services.helpers import (
@@ -19,6 +20,7 @@ from services.helpers import (
     _is_valid_domain, _sanitize_html, _slugify_domain, _strip_html, _text_to_html,
     _text_to_plain, _user_tier, _validate_handle,
 )
+from services.sendgrid_mail import send_system_email
 
 router = APIRouter()
 
@@ -296,7 +298,7 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
 
     body_out = req.body or ''
     sig = (user.get('signature') or '').strip()
-    if sig and '-- ' not in body_out:
+    if sig and req.include_signature and '-- ' not in body_out:
         body_out = f'{body_out}\n\n-- \n{sig}'
 
     record = {
@@ -470,5 +472,83 @@ async def mail_inbound(request: Request):
         await db.emails.insert_one(dict(rec))
         stored += 1
         await ws_manager.send_to_user(owner['id'], {'type': 'new_email', 'email': rec})
+        # Optional out-of-office auto-reply
+        await _maybe_send_auto_reply(owner, sender, subject, in_reply_to=msg_id)
 
     return {'ok': True, 'stored': stored}
+
+
+async def _maybe_send_auto_reply(owner: dict, sender: str, original_subject: str,
+                                  in_reply_to: Optional[str] = None) -> None:
+    """If the recipient has an active auto-reply, fire one back via SendGrid.
+
+    Anti-loop safeguards:
+      * Only one auto-reply per (owner, sender) per 24h.
+      * Skip if sender is empty, self, or a no-reply / mailer-daemon address.
+      * Skip if sender is the owner's own W address (prevents self-loops).
+    """
+    ar = (owner or {}).get('auto_reply') or {}
+    if not ar.get('enabled') or not ar.get('body'):
+        return
+    if not sender or '@' not in sender:
+        return
+    s_low = sender.lower()
+    blocked_locals = ('noreply', 'no-reply', 'mailer-daemon', 'postmaster', 'donotreply',
+                       'bounce', 'bounces', 'abuse', 'unsubscribe')
+    local = s_low.split('@', 1)[0]
+    if local in blocked_locals or 'mailer-daemon' in s_low:
+        return
+    owner_addr = (owner.get('email_address') or '').lower()
+    if owner_addr and owner_addr == s_low:
+        return
+    # Date window
+    now = _utcnow()
+    start = _parse_dt_safe(ar.get('start_at'))
+    end = _parse_dt_safe(ar.get('end_at'))
+    if start and now < start:
+        return
+    if end and now > end:
+        return
+    # 24h dedup
+    last = await db.auto_reply_log.find_one({'owner_id': owner['id'], 'to': s_low})
+    if last:
+        when = _parse_dt_safe(last.get('sent_at'))
+        if when and (now - when) < timedelta(hours=24):
+            return
+
+    reply_subject = ar.get('subject') or 'Out of office'
+    if original_subject and not reply_subject.lower().startswith('re:'):
+        reply_subject = f'{reply_subject}: Re: {original_subject}'
+
+    text_body = ar['body']
+    html_body = _text_to_html(ar['body'], owner.get('name') or owner_addr)
+    try:
+        send_system_email(
+            to_email=sender,
+            subject=reply_subject,
+            text_body=text_body,
+            html_body=html_body,
+            from_email=owner_addr or None,
+            from_name=owner.get('name') or 'W User',
+            reply_to=owner_addr or None,
+        )
+        await db.auto_reply_log.update_one(
+            {'owner_id': owner['id'], 'to': s_low},
+            {'$set': {'owner_id': owner['id'], 'to': s_low, 'sent_at': now.isoformat()}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"auto-reply send failed for {owner.get('id')} -> {sender}: {e}")
+
+
+def _parse_dt_safe(v):
+    """Local helper to parse optional ISO datetimes for auto-reply windowing."""
+    if not v:
+        return None
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        if isinstance(v, _dt):
+            return v if v.tzinfo else v.replace(tzinfo=_tz.utc)
+        return _dt.fromisoformat(str(v).replace('Z', '+00:00'))
+    except Exception:
+        return None

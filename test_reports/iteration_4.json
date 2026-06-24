@@ -1,0 +1,52 @@
+{
+  "summary": "Backend-only verification of three new feature sets in /app/backend/routers/auth.py + routers/mail.py: (1) Recovery Email (set/verify/delete + errors), (2) forgot-password & reset-password via recovery email, (3) Auto-reply (Out of Office) GET/PATCH + inbound webhook, (4) Per-message signature toggle on /mail/compose. Wrote /app/backend/tests/test_recovery_autoreply_signature.py (22 tests across 8 test classes). Result: 22/22 PASSED in 4.20s. SendGrid IS configured in this env (key present in /app/backend/.env) and POST /api/auth/recovery-email/set returns {sent: true} — i.e., SendGrid API accepts the send (returns 200/202); actual deliverability to test mailboxes like probe+...@example.com is not validated, but the API path works. Forgot-password followed the recovery-email branch (sent_via: 'recovery_email'). password_reset_otp is correctly stored in db.users and consumed by reset-password. No password_hash leak anywhere — verified across /auth/me, /auth/verify-otp, /auth/login, /mail/claim-handle, /auth/reset-password responses. No password_reset_otp / recovery_email_otp leak in any HTTP response. Inbound /api/mail/inbound multipart webhook stores the email under the recipient's inbox and returns {ok: true, stored: 1} — no 500. Auto-reply settings save & retrieve correctly; the {enabled:true, body:''} validation returns 400 as expected. Signature toggle works both ways: include_signature=true appends '-- \\nBest, Sam'; include_signature=false has neither the signature text nor the '-- ' delimiter. Regression checks (/auth/me without password_hash, /billing/plans=3 tiers, /ai/start-chat) all pass. No 500 errors in backend logs during the run. The password_hash leak reported in iteration_3 is now fully fixed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/send-otp",
+        "issue": "Unchanged from iteration_3: Twilio account is configured but real US destination numbers return 'Invalid To Phone Number' (or geo-perm 21408) so send-otp returns 400 in this env. Backend still upserts the OTP into db.otps BEFORE the SMS attempt, so tests work around it via direct DB read. Not a regression and does not affect any of the new features tested here. Consider widening the Twilio fallback in routers/auth.py:send_otp to return dev_otp on ANY TwilioRestException (currently only code 21608)."
+      },
+      {
+        "endpoint": "POST /api/auth/recovery-email/set",
+        "issue": "send_system_email() returns True purely based on SendGrid's API response (200/202). It does NOT validate the recipient mailbox (e.g., probe+...@example.com will bounce post-send but the call still returns sent=True). This is acceptable for the OTP-via-email flow as a generic system-email primitive — flagging only so the UX expectation 'sent=true means user got it' is well understood."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_recovery_autoreply_signature.py",
+    "/app/test_reports/pytest/recovery_autoreply_results.xml"
+  ],
+  "action_items": [
+    "Optional/nice-to-have: In routers/auth.py:send_otp, expand Twilio fallback so ANY TwilioRestException returns dev_otp (currently only code 21608). This is a separate, pre-existing concern — does not block the new features.",
+    "No code changes required for the three new feature sets. They behave per spec end-to-end."
+  ],
+  "critical_code_review_comments": [
+    "routers/auth.py:set_recovery_email correctly persists pending email + OTP + timestamp via $set, and only promotes to recovery_email on verify. EMAIL_RE regex is reasonable (case-folded, basic shape). Same-as-W-address guard is in place.",
+    "routers/auth.py:forgot_password stores the OTP in db.users.password_reset_otp (15-min validity via password_reset_otp_at), uses it whether send went via recovery_email or fell back to dev_otp; reset-password accepts that user-level OTP OR the legacy phone-keyed db.otps record — backwards-compatible. _mask_email is defined AFTER the route that uses it but Python resolves it at call time so this works; minor style nit.",
+    "routers/mail.py:_maybe_send_auto_reply anti-loop guards look thorough: blocks noreply/mailer-daemon/postmaster/bounce/abuse/unsubscribe locals, drops empty/non-@ senders, blocks self-loops (owner==sender), enforces start_at/end_at window via _parse_dt_safe, and 24h-per-(owner,sender) dedup via db.auto_reply_log. The dedup key is keyed on owner_id+to and uses upsert — good.",
+    "routers/mail.py:mail_compose appends signature only when include_signature is True AND '-- ' is not already in the body (cheap quoted-reply guard). Default include_signature=True preserves existing behavior. Solid.",
+    "models/schemas.py:ComposeMailReq.include_signature: bool = True — correct default. AutoReplyReq, RecoveryEmailReq, RecoveryEmailVerifyReq are all minimal and well-typed.",
+    "services/sendgrid_mail.py:send_system_email returns False on any exception or non-2xx response — callers (set_recovery_email, forgot_password) treat that as soft-failure with dev_otp fallback. Good failure mode.",
+    "No mongodb _id leaks observed in any of the new endpoints (all use {'_id': 0} or pop on return). No password_hash leak in any of the JSON responses we exercised (verified via explicit assertions in 5 separate tests)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_recovery_autoreply_signature.py (new, 22 tests)",
+    "/app/test_reports/pytest/recovery_autoreply_results.xml (new, JUnit output)"
+  ],
+  "success_rate": {
+    "backend": "22/22 (100%) — all new features + regression checks pass",
+    "frontend": "N/A (backend-only per review request)"
+  },
+  "seed_data_creation": "Created one disposable user per test run: phone +1202867{ts%10000} with password 'Secret123!', claimed handle 'recv{ts%100000}@w.xyz', set+verified recovery email 'test+recover{ts}@example.com', then DELETE /api/auth/me at session-end cleanup fixture. The test_wrong_otp_401 case also creates an extra pending recovery (wrong+{ts}@example.com) that gets cleaned up alongside the user delete. No leftover test data observed in db.users / db.emails / db.otps / db.auto_reply_log.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-run: `pytest /app/backend/tests/test_recovery_autoreply_signature.py -v` (must run as a whole class suite — individual tests depend on state set up in TestBootstrap). Test is idempotent across runs (uses time.time() suffix for phone/handle). SendGrid IS live in this env (SENDGRID_API_KEY set), so /auth/recovery-email/set returns sent=True and NO dev_otp; test reads the OTP from db.users.recovery_email_otp instead. If SendGrid key is removed, the test auto-falls-back to dev_otp from response body. Backend URL: EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env (not EXPO_BACKEND_URL). MONGO_URL & DB_NAME in /app/backend/.env. Twilio is configured but blocked for US numbers; OTPs are still upserted to db.otps before SMS send, so tests bypass via direct Mongo read.",
+  "rca_of_issue": "No new issues to RCA — all 3 new feature sets work end-to-end. The previously-reported password_hash leak (iteration_3) is now resolved: GET /auth/me no longer returns password_hash, confirmed in test_me_has_recovery_email_no_password_hash and test_auth_me_no_password_hash. password_reset_otp and recovery_email_otp are also stripped from /auth/me, /auth/reset-password, and /mail/claim-handle responses. SendGrid 'sent=True' just means API-accept; deliverability to fake test mailboxes is not validated but irrelevant for backend-correctness scoring."
+}
