@@ -610,12 +610,19 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if SENDGRID_API_KEY:
         try:
             from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail, Email, To, Content, Attachment, FileContent, FileName, FileType, Disposition
+            from sendgrid.helpers.mail import Mail, Email, To, Content, Attachment, FileContent, FileName, FileType, Disposition, Header
+            # Build an HTML version from the plain text body for better deliverability
+            html_body = _text_to_html(body_out or " ", user.get("name") or from_addr)
             msg = Mail(
                 from_email=Email(from_addr, user.get("name") or from_addr),
                 subject=req.subject or "(no subject)",
                 plain_text_content=Content("text/plain", body_out or " "),
+                html_content=Content("text/html", html_body),
             )
+            # List-Unsubscribe header (RFC 8058) — strong signal of legitimate mail
+            unsubscribe_url = f"mailto:unsubscribe@{MAIL_DOMAIN}?subject=unsubscribe"
+            msg.add_header(Header("List-Unsubscribe", f"<{unsubscribe_url}>"))
+            msg.add_header(Header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"))
             for addr in record["to_addrs"]:
                 msg.add_to(To(addr))
             for a in (req.attachments or []):
@@ -751,6 +758,39 @@ async def mail_inbound(request: Request):
 
 def _strip_html(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s or "").strip()
+
+
+def _text_to_html(text: str, sender_name: str = "") -> str:
+    """Convert plain text to a clean HTML email with proper structure.
+    Helps deliverability (real mail is multipart) and looks better in client.
+    """
+    import html as _html
+    escaped = _html.escape(text or "")
+    # Convert URLs to clickable links
+    escaped = re.sub(
+        r"(https?://[^\s<>\"]+)",
+        r'<a href="\1" style="color:#0A7A90;text-decoration:underline">\1</a>',
+        escaped,
+    )
+    # Preserve line breaks
+    escaped = escaped.replace("\n", "<br>")
+    sender = _html.escape(sender_name) if sender_name else ""
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f0f4f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#06152B;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f4f8;padding:24px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:12px;max-width:600px;width:100%;">
+<tr><td style="padding:32px;font-size:15px;line-height:1.55;color:#06152B;">
+{escaped}
+</td></tr>
+<tr><td style="padding:16px 32px 24px;border-top:1px solid #E2E8F0;font-size:11px;color:#5B7083;text-align:center;">
+Sent via <a href="https://w.xyz" style="color:#0A7A90;text-decoration:none">W</a> — your AI-native messaging & mail. To unsubscribe, reply with "unsubscribe".
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>"""
 
 
 # -------------------- Status / Updates --------------------

@@ -13,7 +13,7 @@ export default function Index() {
       </View>
     );
   }
-  if (!user) return <Redirect href="/(auth)/welcome" />;
+  if (!user) return <Redirect href="/(auth)/signin" />;
   if (!user.name) return <Redirect href="/(auth)/profile-setup" />;
   return <Redirect href="/(tabs)/updates" />;
 }
