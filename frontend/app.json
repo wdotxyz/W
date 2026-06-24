@@ -1,22 +1,42 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "W",
+    "slug": "w-messenger",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "wmessenger",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "xyz.w.messenger",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take photos to share in chats and email",
+        "NSPhotoLibraryUsageDescription": "Pick photos to share in chats and email",
+        "NSPhotoLibraryAddUsageDescription": "Save photos you receive in W",
+        "NSMicrophoneUsageDescription": "Record voice notes to send in chats",
+        "NSContactsUsageDescription": "Find friends already on W from your contacts"
+      }
     },
     "android": {
+      "package": "xyz.w.messenger",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#0B3B60"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_CONTACTS",
+        "android.permission.VIBRATE",
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,10 +51,25 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000"
+          "backgroundColor": "#0B3B60",
+          "dark": {
+            "backgroundColor": "#0B3B60"
+          }
         }
       ],
-      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pick photos to share in chats and email",
+          "cameraPermission": "Take photos to share in chats and email"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Record voice notes to send in chats"
+        }
+      ],
       "expo-font"
     ],
     "experiments": {
