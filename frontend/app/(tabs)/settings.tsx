@@ -41,7 +41,7 @@ export default function SettingsScreen() {
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="sparkles" label="AI Assistant" onPress={() => router.push("/actions")} testID="row-ai-assistant" />
           <Row icon="color-palette" label="Theme" />
-          <Row icon="help-circle" label="Help & Support" />
+          <Row icon="help-circle" label="Help & Support" onPress={() => router.push("/help")} testID="row-help" />
           <Row icon="mail" label="Mail" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
           <Row icon="person-circle" label="Account" onPress={() => router.push("/settings/account")} testID="row-account-section" />
         </View>
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   group: { marginTop: space.xl, marginHorizontal: space.xl, backgroundColor: colors.surface2, borderRadius: radius.xl, overflow: "hidden" },
   rowItem: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12 },
   rowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
-  rowLabel: { fontSize: 15, color: colors.text, fontWeight: "600" },
+  rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: "600" },
   rowHint: { flex: 1, fontSize: 12.5, color: colors.textMuted, marginLeft: 8, textAlign: "right", marginRight: 6 },
   signOut: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: space.xl, marginHorizontal: space.xl, padding: 16, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.danger },
   signOutText: { color: colors.danger, fontWeight: "700", fontSize: 15 },

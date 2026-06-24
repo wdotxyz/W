@@ -72,7 +72,7 @@ export default function ActionsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="actions-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Action items</Text>
+        <Text style={styles.title}>AI Assistant</Text>
         <TouchableOpacity onPress={() => { setRefreshing(true); load(); }} style={styles.iconBtn} testID="actions-refresh">
           <Ionicons name="refresh" size={22} color={colors.text} />
         </TouchableOpacity>
