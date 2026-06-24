@@ -24,6 +24,11 @@ export default function PhoneScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (domainMode === "custom") {
+      // Custom domain: 1-26 chars, format only — no tier gating, since user owns the domain
+      setUsernameStatus({});
+      return;
+    }
     if (username.length < 1) { setUsernameStatus({}); return; }
     setUsernameStatus({ checking: true });
     const t = setTimeout(async () => {
@@ -36,16 +41,17 @@ export default function PhoneScreen() {
   }, [username]);
 
   const validDomain = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(customDomain);
+  const validCustomHandle = /^[a-z0-9]([a-z0-9-]{0,24}[a-z0-9])?$/.test(username) && username.length >= 1 && username.length <= 26;
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
   const pwdStrong = password.length >= 8 && /[0-9\W_]/.test(password);
   const isValid =
     firstName.trim().length >= 2 &&
     lastName.trim().length >= 1 &&
     phone.length >= 6 &&
-    usernameStatus.available === true &&
-    usernameStatus.tier === "free" &&
     pwdStrong &&
-    (domainMode === "wxyz" || (domainMode === "custom" && validDomain));
+    (domainMode === "wxyz"
+      ? (usernameStatus.available === true && usernameStatus.tier === "free")
+      : (validDomain && validCustomHandle));
 
   const onContinue = async () => {
     if (!isValid) return;
@@ -168,7 +174,11 @@ export default function PhoneScreen() {
             </View>
           )}
           <View style={styles.statusRow} testID="username-status">
-            {usernameStatus.checking ? (
+            {domainMode === "custom" ? (
+              validCustomHandle
+                ? <><Ionicons name="checkmark-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>Looks good · {username.length}/26</Text></>
+                : <Text style={styles.statusText}>1–26 characters · letters, numbers, dashes (you own the domain — no W limits)</Text>
+            ) : usernameStatus.checking ? (
               <><ActivityIndicator size="small" color={colors.textMuted} /><Text style={styles.statusText}>Checking…</Text></>
             ) : usernameStatus.tier === "reserved" ? (
               <View style={{ flex: 1 }}>
@@ -182,8 +192,8 @@ export default function PhoneScreen() {
               </View>
             ) : usernameStatus.tier === "unavailable" ? (
               <><Ionicons name="close-circle" size={16} color={colors.danger} /><Text style={[styles.statusText, { color: colors.danger }]}>{usernameStatus.reason || "Not available"}</Text></>
-            ) : usernameStatus.available === true && usernameStatus.tier === "premium" ? (
-              <><Ionicons name="star" size={16} color="#E07B00" /><Text style={[styles.statusText, { color: "#E07B00" }]}>Premium handle — subscription required</Text></>
+            ) : usernameStatus.available === true && (usernameStatus.tier === "plus" || usernameStatus.tier === "pro") ? (
+              <><Ionicons name="star" size={16} color="#E07B00" /><Text style={[styles.statusText, { color: "#E07B00" }]}>{usernameStatus.tier === "pro" ? "Pro" : "Plus"} handle — subscription required</Text></>
             ) : usernameStatus.available === true ? (
               <><Ionicons name="checkmark-circle" size={16} color={colors.success} /><Text style={[styles.statusText, { color: colors.success }]}>Available · {username.length}/26</Text></>
             ) : usernameStatus.available === false ? (
@@ -191,7 +201,7 @@ export default function PhoneScreen() {
             ) : username.length > 0 && username.length < 4 ? (
               <Text style={styles.statusText}>Handles under 4 characters aren&apos;t available</Text>
             ) : (
-              <Text style={styles.statusText}>6–26 characters · letters, numbers, dashes</Text>
+              <Text style={styles.statusText}>6+ chars free · 4 needs Pro · 5 needs Plus · letters, numbers, dashes</Text>
             )}
           </View>
 

@@ -1146,16 +1146,29 @@ class ClaimHandleReq(BaseModel):
 
 @api_router.post("/mail/claim-handle")
 async def claim_handle(req: ClaimHandleReq, user=Depends(get_current_user)):
-    h = _validate_handle(req.handle)
+    raw_handle = (req.handle or "").strip().lower()
+    target_domain = (req.domain or "").strip().lower() or MAIL_DOMAIN
+    target_domain = re.sub(r"^https?://", "", target_domain).split("/")[0]
+    using_wxyz = target_domain == MAIL_DOMAIN
+
+    if using_wxyz:
+        h = _validate_handle(raw_handle)  # enforces 4+ length, reserved, premium gating
+    else:
+        # Custom domain — user owns it. Only enforce basic format (1-26 chars, letters/numbers/dashes).
+        if not raw_handle or len(raw_handle) > 26:
+            raise HTTPException(400, "Handle must be 1–26 characters.")
+        if not re.match(r"^[a-z0-9]([a-z0-9-]{0,24}[a-z0-9])?$", raw_handle):
+            raise HTTPException(400, "Letters, numbers and dashes only. Can't start or end with a dash.")
+        h = raw_handle
+
     exists = await db.users.find_one({"email_handle": h, "id": {"$ne": user["id"]}}, {"_id": 0, "id": 1})
-    if exists:
+    if exists and using_wxyz:
         raise HTTPException(409, "Handle already taken.")
 
     update: dict = {"email_handle": h}
-    if req.domain:
-        domain = req.domain.strip().lower()
-        domain = re.sub(r"^https?://", "", domain).split("/")[0]
-        if domain == MAIL_DOMAIN:
+    if not using_wxyz:
+        domain = target_domain
+        if False:  # noqa — never reached, target_domain already filtered out @w.xyz above
             update["email_address"] = f"{h}@{MAIL_DOMAIN}"
             update["custom_domain"] = None
             update["domain_verified"] = True
