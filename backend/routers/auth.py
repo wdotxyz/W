@@ -15,11 +15,12 @@ from core.security import (
     get_current_user, hash_password, make_token, now_iso, verify_password,
 )
 from models.schemas import (
-    AutoReplyReq, ForgotPasswordReq, LoginReq, NotifSettingsReq, ProfileReq,
+    AutoReplyReq, ForgotPasswordReq, GhostMailReq, LoginReq, NotifSettingsReq, ProfileReq,
     RecoveryEmailReq, RecoveryEmailVerifyReq, ResetPasswordReq,
     SendOtpReq, SetPasswordReq, SignatureReq, TwoFactorToggleReq, VerifyOtpReq,
 )
 from services.sendgrid_mail import send_system_email
+from services.helpers import _user_tier
 
 import uuid
 
@@ -510,6 +511,28 @@ async def update_auto_reply(req: AutoReplyReq, user=Depends(get_current_user)):
         settings['subject'] = 'Out of office'
     await db.users.update_one({'id': user['id']}, {'$set': {'auto_reply': settings}})
     return settings
+
+
+# -------------------- Ghost Mail (default ON; premium can disable) --------------------
+@router.get('/auth/ghost-mail')
+async def get_ghost_mail(user=Depends(get_current_user)):
+    enabled = user.get('ghost_mail_enabled', True)
+    return {
+        'enabled': bool(enabled),
+        'can_disable': _user_tier(user) in ('plus', 'pro'),
+        'tier': _user_tier(user),
+    }
+
+
+@router.patch('/auth/ghost-mail')
+async def update_ghost_mail(req: GhostMailReq, user=Depends(get_current_user)):
+    if not req.enabled and _user_tier(user) not in ('plus', 'pro'):
+        raise HTTPException(402, 'Disabling Ghost Mail is a Plus / Pro feature. Upgrade to keep all your emails.')
+    await db.users.update_one(
+        {'id': user['id']},
+        {'$set': {'ghost_mail_enabled': bool(req.enabled), 'ghost_mail_updated_at': now_iso()}},
+    )
+    return {'enabled': bool(req.enabled)}
 
 
 @router.get('/users')

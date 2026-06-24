@@ -136,3 +136,11 @@ class AutoReplyReq(BaseModel):
     body: Optional[str] = None
     start_at: Optional[str] = None
     end_at: Optional[str] = None
+
+
+class GhostMailReq(BaseModel):
+    enabled: bool
+
+
+class SnoozeReq(BaseModel):
+    until: Optional[str] = None  # ISO datetime; null to unsnooze

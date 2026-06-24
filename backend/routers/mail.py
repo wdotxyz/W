@@ -3,7 +3,7 @@ import base64
 import json
 import re
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -14,7 +14,7 @@ from core.config import (
 from core.db import db, logger
 from core.security import _utcnow, get_current_user, now_iso
 from core.ws import ws_manager
-from models.schemas import ClaimHandleReq, ComposeMailReq, DraftReq
+from models.schemas import ClaimHandleReq, ComposeMailReq, DraftReq, SnoozeReq
 from services.helpers import (
     _approx_b64_bytes, _check_and_bump_storage, _handle_tier, _is_reserved_or_profane,
     _is_valid_domain, _sanitize_html, _slugify_domain, _strip_html, _text_to_html,
@@ -166,7 +166,54 @@ async def mail_inbox(user=Depends(get_current_user)):
     addrs = [a for a in [addr, fb] if a]
     if not addrs:
         return []
-    msgs = await db.emails.find({'to_addrs': {'$in': addrs}, 'folder': 'inbox'}, {'_id': 0}).sort('created_at', -1).to_list(500)
+    now_s = now_iso()
+    q = {
+        'to_addrs': {'$in': addrs},
+        'folder': 'inbox',
+        'archived': {'$ne': True},
+        '$or': [
+            {'snoozed_until': {'$exists': False}},
+            {'snoozed_until': None},
+            {'snoozed_until': {'$lte': now_s}},
+        ],
+    }
+    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return msgs
+
+
+@router.get('/mail/starred')
+async def mail_starred(user=Depends(get_current_user)):
+    """All starred (kept) emails across folders. Useful for the 'Saved' tab."""
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    addrs = [a for a in [addr, fb] if a]
+    q = {'starred': True, '$or': [{'owner_id': user['id']}, {'to_addrs': {'$in': addrs or [None]}}]}
+    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return msgs
+
+
+@router.get('/mail/archived')
+async def mail_archived(user=Depends(get_current_user)):
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    addrs = [a for a in [addr, fb] if a]
+    if not addrs:
+        return []
+    q = {'to_addrs': {'$in': addrs}, 'archived': True}
+    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return msgs
+
+
+@router.get('/mail/snoozed')
+async def mail_snoozed(user=Depends(get_current_user)):
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    addrs = [a for a in [addr, fb] if a]
+    if not addrs:
+        return []
+    now_s = now_iso()
+    q = {'to_addrs': {'$in': addrs}, 'snoozed_until': {'$gt': now_s}}
+    msgs = await db.emails.find(q, {'_id': 0}).sort('snoozed_until', 1).to_list(500)
     return msgs
 
 
@@ -253,6 +300,147 @@ async def mail_delete(mail_id: str, user=Depends(get_current_user)):
         raise HTTPException(404, 'Not found')
     await db.emails.delete_one({'id': mail_id})
     return {'ok': True}
+
+
+# -------------------- Threaded conversation view --------------------
+def _addrs_for(user: dict) -> list:
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    return [a for a in [addr, fb] if a]
+
+
+@router.get('/mail/thread/{thread_id}')
+async def get_thread(thread_id: str, user=Depends(get_current_user)):
+    """Return every email in a thread the user can see + mark them as read/opened."""
+    addrs = _addrs_for(user)
+    q = {'thread_id': thread_id, '$or': [{'owner_id': user['id']}, {'to_addrs': {'$in': addrs or [None]}}]}
+    items = await db.emails.find(q, {'_id': 0}).sort('created_at', 1).to_list(500)
+    if not items:
+        raise HTTPException(404, 'Thread not found')
+    # Mark unread inbound emails as read AND record opened_at if not already
+    now_s = now_iso()
+    ids_to_open = [m['id'] for m in items
+                   if m.get('folder') == 'inbox' and (not m.get('read') or not m.get('opened_at'))]
+    if ids_to_open:
+        await db.emails.update_many(
+            {'id': {'$in': ids_to_open}},
+            {'$set': {'read': True, 'opened_at': now_s}},
+        )
+        for m in items:
+            if m['id'] in ids_to_open:
+                m['read'] = True
+                m['opened_at'] = now_s
+    return {
+        'thread_id': thread_id,
+        'messages': items,
+        'ghost_mail_enabled': bool(user.get('ghost_mail_enabled', True)),
+        'is_starred': any(m.get('starred') for m in items),
+    }
+
+
+@router.post('/mail/thread/{thread_id}/star')
+async def star_thread(thread_id: str, user=Depends(get_current_user)):
+    """Save the entire thread permanently (Ghost Mail won't delete it on close)."""
+    addrs = _addrs_for(user)
+    q = {'thread_id': thread_id, 'folder': 'inbox', 'to_addrs': {'$in': addrs or [None]}}
+    res = await db.emails.update_many(q, {'$set': {'starred': True, 'starred_at': now_iso()}})
+    return {'starred': True, 'matched': res.modified_count}
+
+
+@router.post('/mail/thread/{thread_id}/unstar')
+async def unstar_thread(thread_id: str, user=Depends(get_current_user)):
+    addrs = _addrs_for(user)
+    q = {'thread_id': thread_id, 'folder': 'inbox', 'to_addrs': {'$in': addrs or [None]}}
+    res = await db.emails.update_many(q, {'$set': {'starred': False}, '$unset': {'starred_at': ''}})
+    return {'starred': False, 'matched': res.modified_count}
+
+
+@router.post('/mail/thread/{thread_id}/close')
+async def close_thread(thread_id: str, user=Depends(get_current_user)):
+    """Called when the user navigates away. Ghost-deletes unstarred inbox messages
+    that were already opened, IF the user has ghost_mail enabled."""
+    if not user.get('ghost_mail_enabled', True):
+        return {'deleted': 0, 'ghost_mail': False}
+    addrs = _addrs_for(user)
+    q = {
+        'thread_id': thread_id,
+        'folder': 'inbox',
+        'to_addrs': {'$in': addrs or [None]},
+        'starred': {'$ne': True},
+        'opened_at': {'$exists': True, '$ne': None},
+    }
+    victims = await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(200)
+    if not victims:
+        return {'deleted': 0, 'ghost_mail': True}
+    ids = [v['id'] for v in victims]
+    await db.emails.delete_many({'id': {'$in': ids}})
+    # Notify via WebSocket so other open sessions refresh
+    try:
+        await ws_manager.send_to_user(user['id'], {'type': 'mail_deleted', 'ids': ids, 'thread_id': thread_id})
+    except Exception:
+        pass
+    return {'deleted': len(ids), 'ghost_mail': True, 'ids': ids}
+
+
+# -------------------- Per-message actions --------------------
+@router.patch('/mail/{mail_id}/star')
+async def star_mail(mail_id: str, user=Depends(get_current_user)):
+    m = await db.emails.find_one({'id': mail_id}, {'_id': 0, 'starred': 1, 'owner_id': 1, 'to_addrs': 1})
+    if not m:
+        raise HTTPException(404, 'Not found')
+    addrs = _addrs_for(user)
+    if m.get('owner_id') != user['id'] and not (set([a.lower() for a in (m.get('to_addrs') or [])]) & set(addrs)):
+        raise HTTPException(403, 'Forbidden')
+    new_val = not bool(m.get('starred'))
+    update: dict = {'$set': {'starred': new_val}}
+    if new_val:
+        update['$set']['starred_at'] = now_iso()
+    else:
+        update['$unset'] = {'starred_at': ''}
+    await db.emails.update_one({'id': mail_id}, update)
+    return {'starred': new_val}
+
+
+@router.patch('/mail/{mail_id}/archive')
+async def archive_mail(mail_id: str, user=Depends(get_current_user)):
+    m = await db.emails.find_one({'id': mail_id}, {'_id': 0, 'archived': 1, 'to_addrs': 1, 'owner_id': 1})
+    if not m:
+        raise HTTPException(404, 'Not found')
+    addrs = _addrs_for(user)
+    if m.get('owner_id') != user['id'] and not (set([a.lower() for a in (m.get('to_addrs') or [])]) & set(addrs)):
+        raise HTTPException(403, 'Forbidden')
+    new_val = not bool(m.get('archived'))
+    update: dict = {'$set': {'archived': new_val}}
+    if new_val:
+        update['$set']['archived_at'] = now_iso()
+    else:
+        update['$unset'] = {'archived_at': ''}
+    await db.emails.update_one({'id': mail_id}, update)
+    return {'archived': new_val}
+
+
+@router.patch('/mail/{mail_id}/snooze')
+async def snooze_mail(mail_id: str, req: SnoozeReq, user=Depends(get_current_user)):
+    m = await db.emails.find_one({'id': mail_id}, {'_id': 0, 'to_addrs': 1, 'owner_id': 1})
+    if not m:
+        raise HTTPException(404, 'Not found')
+    addrs = _addrs_for(user)
+    if m.get('owner_id') != user['id'] and not (set([a.lower() for a in (m.get('to_addrs') or [])]) & set(addrs)):
+        raise HTTPException(403, 'Forbidden')
+    if req.until:
+        # Validate ISO date
+        try:
+            dt = datetime.fromisoformat(req.until.replace('Z', '+00:00'))
+        except Exception:
+            raise HTTPException(400, 'Invalid snooze date.')
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if dt <= _utcnow():
+            raise HTTPException(400, 'Snooze date must be in the future.')
+        await db.emails.update_one({'id': mail_id}, {'$set': {'snoozed_until': req.until}})
+        return {'snoozed_until': req.until}
+    await db.emails.update_one({'id': mail_id}, {'$unset': {'snoozed_until': ''}})
+    return {'snoozed_until': None}
 
 
 @router.get('/mail/{mail_id}')

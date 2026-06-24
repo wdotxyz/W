@@ -1,0 +1,42 @@
+{
+  "summary": "Backend-only verification of new mail-management features (Ghost Mail toggle, thread view + ghost-delete on close, per-message star/archive/snooze, filtered inbox, legacy regression). 20/20 pytest cases pass against the public preview backend. Key flows confirmed: free user is blocked (402) from disabling Ghost Mail, Plus user (after Mongo tier bump) can disable, GET /auth/me reflects the change, opening a thread marks messages read+opened_at, close-thread ghost-deletes opened/unstarred inbox messages and actually removes them from Mongo (verified via direct 404 + Mongo lookup), starring a thread fully protects it from ghost-deletion, archived/snoozed are correctly excluded from /mail/inbox, past-date snooze returns 400, billing plans still returns 3 plans, no password_hash / password_reset_otp leakage in any response. Legacy inbox docs without archived/snoozed_until fields still surface in /mail/inbox.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/mail/thread/{thread_id}/close",
+        "issue": "Ghost-delete query does NOT exclude archived or future-snoozed messages. If a user archives a mail (or snoozes it for tomorrow), then opens the thread and navigates away, the archived/snoozed mail is also nuked from Mongo. Reproduction: archive ids[0] + snooze ids[1] for +1h, GET /mail/thread/{tid} (marks all opened_at), POST .../close → returns deleted=3 and all three messages (incl. archived & snoozed) are gone from Mongo. Likely the query at routers/mail.py:365-371 should also include `'archived': {'$ne': True}` and a snoozed_until filter, otherwise the 'I'll come back to this later' (snooze) and 'I'm keeping this filed' (archive) intents are silently destroyed."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mail_management.py",
+    "/app/test_reports/pytest/mail_management_results.xml"
+  ],
+  "action_items": [
+    "Decide whether close_thread should spare archived/snoozed messages. If yes, add `'archived': {'$ne': True}` and `$or: [{snoozed_until: <= now}, {snoozed_until: null/missing}]` to the victim query in routers/mail.py:365 (mirror the /mail/inbox filter).",
+    "Optional polish: `/mail/inbox` listing legacy docs is fine, but consider an explicit MongoDB index on (to_addrs, folder, archived, snoozed_until) once email volume grows — current sort+filter on .find without indexes is OK for now but will get slow."
+  ],
+  "critical_code_review_comments": [
+    "routers/mail.py:362 — `user.get('ghost_mail_enabled', True)` is correctly defaulting to True for legacy users; matches the GET endpoint default. Good.",
+    "routers/mail.py:365-371 — close_thread victim query is missing the archived/snoozed-aware filter that /mail/inbox uses. This is the only behavioral inconsistency observed.",
+    "routers/auth.py:529 — 402 on free-user disable is correct, but the error body uses FastAPI's default detail wrapper. Frontend should expect `{detail: '...'}`, not a top-level message.",
+    "routers/mail.py:341-355 — star_thread/unstar_thread only touch folder='inbox'. Sent-folder messages in the same thread are never marked starred. Acceptable since close_thread also only acts on inbox, but worth noting if the UI ever shows a unified per-thread star state.",
+    "routers/mail.py:454-456 — mail_detail's auto-mark-read updates `read` but NOT `opened_at`. Only the thread view sets opened_at. If a user only ever hits the single-mail endpoint (e.g. a deep-link), the ghost-delete-on-close will never fire for that mail (opened_at stays missing). This is probably intentional (close only acts on thread-opened mails) but worth confirming."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mail_management.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "seed_data_creation": "Test creates+cleans up a single fresh user per run (PHONE=+1777<timestamp>, handle=ghost<timestamp>). User, OTPs, and emails are removed in test_99_cleanup. No persistent seed left behind.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Twilio is configured in this env but rejects test phone numbers (HTTP 400 invalid 'To'). The send-otp endpoint correctly writes the OTP to db.otps BEFORE attempting Twilio, so even on a 400 response the OTP is recoverable via Mongo (this is how test_01 retrieves it). Use MONGO_URL=mongodb://localhost:27017 DB_NAME=wave_chat when running pytest. All new endpoints listed in the review request are implemented in routers/mail.py and routers/auth.py and pass functional tests.",
+  "rca_of_issue": "close_thread silently deletes archived/snoozed messages: routers/mail.py defines the victim query as `{thread_id, folder:'inbox', starred!=true, opened_at exists & not null}`. The GET /mail/thread/{id} call sets opened_at on every inbox message in the thread (regardless of archived/snoozed state), so the very next POST .../close treats them as candidates and delete_many removes them from Mongo. Mitigation: add archived/snoozed exclusions to the query OR have get_thread skip stamping opened_at on archived/snoozed mails — the former is more explicit."
+}

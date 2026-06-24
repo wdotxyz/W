@@ -2,7 +2,9 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl,
   ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert,
+  Animated,
 } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,7 +13,7 @@ import { useAuth } from "../../src/auth";
 import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
 
-type Folder = "inbox" | "drafts" | "sent";
+type Folder = "inbox" | "drafts" | "sent" | "starred";
 
 export default function MailScreen() {
   const router = useRouter();
@@ -42,7 +44,7 @@ export default function MailScreen() {
 
   useEffect(() => {
     return subscribe((m: any) => {
-      if (m.type === "new_email" && folder === "inbox" && !searchActive) load();
+      if (folder === "inbox" && !searchActive && (m.type === "new_email" || m.type === "mail_deleted")) load();
     });
   }, [subscribe, folder, load, searchActive]);
 
@@ -93,6 +95,7 @@ export default function MailScreen() {
       {!searchActive && (
         <View style={styles.tabs}>
           <FolderTab label="Inbox" active={folder === "inbox"} onPress={() => setFolder("inbox")} testID="mail-tab-inbox" />
+          <FolderTab label="Starred" active={folder === "starred"} onPress={() => setFolder("starred")} testID="mail-tab-starred" />
           <FolderTab label="Drafts" active={folder === "drafts"} onPress={() => setFolder("drafts")} testID="mail-tab-drafts" />
           <FolderTab label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
         </View>
@@ -105,26 +108,44 @@ export default function MailScreen() {
           data={emails}
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => (
-            <MailRow
+            <SwipeableRow
               mail={item}
               folder={folder}
+              ghostMail={(user as any)?.ghost_mail_enabled !== false}
               onPress={() => {
                 if (folder === "drafts") router.push({ pathname: "/mail/compose", params: { draftId: item.id } });
+                else if (item.thread_id) router.push(`/mail/thread/${item.thread_id}`);
                 else router.push(`/mail/${item.id}`);
               }}
+              onAfterAction={() => load()}
             />
           )}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name={searchActive ? "search-outline" : folder === "inbox" ? "mail-open-outline" : folder === "drafts" ? "document-text-outline" : "send-outline"} size={48} color={colors.textMuted} />
+              <Ionicons
+                name={
+                  searchActive ? "search-outline"
+                    : folder === "inbox" ? "mail-open-outline"
+                    : folder === "starred" ? "star-outline"
+                    : folder === "drafts" ? "document-text-outline"
+                    : "send-outline"
+                }
+                size={48}
+                color={colors.textMuted}
+              />
               <Text style={styles.emptyTitle}>
-                {searchActive ? (search ? "No results" : "Search your mail") : folder === "inbox" ? "Inbox empty" : folder === "drafts" ? "No drafts" : "No sent mail"}
+                {searchActive ? (search ? "No results" : "Search your mail")
+                  : folder === "inbox" ? "Inbox empty"
+                  : folder === "starred" ? "Nothing saved yet"
+                  : folder === "drafts" ? "No drafts"
+                  : "No sent mail"}
               </Text>
               {!searchActive && (
                 <Text style={styles.emptySub}>
                   {folder === "inbox"
                     ? `Send emails to ${user.email_address} from any provider.`
+                    : folder === "starred" ? "Open a thread and tap Save to keep it forever."
                     : folder === "drafts" ? "Drafts you save while composing will appear here."
                     : "Tap the pencil to compose."}
                 </Text>
@@ -161,9 +182,10 @@ const FolderTab = ({ label, active, onPress, testID }: any) => (
   </TouchableOpacity>
 );
 
-const MailRow = ({ mail, folder, onPress }: any) => {
+const MailRow = ({ mail, folder, onPress, ghostMail }: any) => {
   const unread = folder === "inbox" && !mail.read;
-  const who = folder === "inbox" ? (mail.from_name || mail.from_addr) : folder === "drafts" ? `Draft: ${(mail.to_addrs || []).join(", ") || "—"}` : (mail.to_addrs?.join(", ") || "—");
+  const isGhost = folder === "inbox" && ghostMail && !mail.starred;
+  const who = folder === "inbox" || folder === "starred" ? (mail.from_name || mail.from_addr) : folder === "drafts" ? `Draft: ${(mail.to_addrs || []).join(", ") || "—"}` : (mail.to_addrs?.join(", ") || "—");
   const preview = (mail.body || "").replace(/\s+/g, " ").slice(0, 90);
   return (
     <TouchableOpacity onPress={onPress} style={styles.row} testID={`mail-row-${mail.id}`} activeOpacity={0.7}>
@@ -171,7 +193,13 @@ const MailRow = ({ mail, folder, onPress }: any) => {
       <View style={{ flex: 1 }}>
         <View style={styles.rowTop}>
           <Text style={[styles.who, unread && { fontWeight: "800" }]} numberOfLines={1}>{who}</Text>
-          {folder === "inbox" && <BlueCheck tier={mail.from_tier} size={13} />}
+          {(folder === "inbox" || folder === "starred") && <BlueCheck tier={mail.from_tier} size={13} />}
+          {mail.starred && <Ionicons name="star" size={13} color="#E0A300" />}
+          {isGhost && (
+            <View style={styles.ghostPill} testID={`ghost-${mail.id}`}>
+              <Text style={styles.ghostPillText}>👻</Text>
+            </View>
+          )}
           {mail._thread_count > 1 && <Text style={styles.threadCount}>· {mail._thread_count}</Text>}
           <Text style={styles.time}>{formatDate(mail.created_at)}</Text>
         </View>
@@ -185,6 +213,78 @@ const MailRow = ({ mail, folder, onPress }: any) => {
         )}
       </View>
     </TouchableOpacity>
+  );
+};
+
+// Swipeable wrapper around MailRow. Left swipe = Archive, Right swipe = Star.
+const SwipeableRow = ({ mail, folder, onPress, ghostMail, onAfterAction }: any) => {
+  const swipeRef = useRef<Swipeable | null>(null);
+
+  const doStar = async () => {
+    try { await api(`/mail/${mail.id}/star`, { method: "PATCH" }); }
+    catch (e: any) { Alert.alert("Couldn't star", e.message); }
+    finally { swipeRef.current?.close(); onAfterAction?.(); }
+  };
+  const doArchive = async () => {
+    try { await api(`/mail/${mail.id}/archive`, { method: "PATCH" }); }
+    catch (e: any) { Alert.alert("Couldn't archive", e.message); }
+    finally { swipeRef.current?.close(); onAfterAction?.(); }
+  };
+  const doSnooze = async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    try { await api(`/mail/${mail.id}/snooze`, { method: "PATCH", body: JSON.stringify({ until: tomorrow.toISOString() }) }); }
+    catch (e: any) { Alert.alert("Couldn't snooze", e.message); }
+    finally { swipeRef.current?.close(); onAfterAction?.(); }
+  };
+
+  // Swipes are only meaningful for inbox / starred — for drafts & sent we just render the row.
+  if (folder !== "inbox" && folder !== "starred") {
+    return <MailRow mail={mail} folder={folder} onPress={onPress} ghostMail={ghostMail} />;
+  }
+
+  const renderRight = (progress: Animated.AnimatedInterpolation<number>) => {
+    const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1], extrapolate: "clamp" });
+    return (
+      <Animated.View style={[styles.actionRight, { transform: [{ scale }] }]}>
+        <TouchableOpacity onPress={doStar} style={[styles.actionBtn, { backgroundColor: "#E0A300" }]} testID={`swipe-star-${mail.id}`}>
+          <Ionicons name={mail.starred ? "star" : "star-outline"} size={20} color="#fff" />
+          <Text style={styles.actionText}>{mail.starred ? "Unstar" : "Star"}</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+  const renderLeft = (progress: Animated.AnimatedInterpolation<number>) => {
+    const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1], extrapolate: "clamp" });
+    return (
+      <Animated.View style={[styles.actionLeft, { transform: [{ scale }] }]}>
+        <TouchableOpacity onPress={doSnooze} style={[styles.actionBtn, { backgroundColor: colors.accent }]} testID={`swipe-snooze-${mail.id}`}>
+          <Ionicons name="time" size={20} color="#fff" />
+          <Text style={styles.actionText}>Snooze</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={doArchive} style={[styles.actionBtn, { backgroundColor: colors.primary }]} testID={`swipe-archive-${mail.id}`}>
+          <Ionicons name="archive" size={20} color="#fff" />
+          <Text style={styles.actionText}>Archive</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  return (
+    <Swipeable
+      ref={(r) => { swipeRef.current = r; }}
+      renderRightActions={renderRight}
+      renderLeftActions={renderLeft}
+      friction={2}
+      rightThreshold={40}
+      leftThreshold={40}
+      overshootFriction={8}
+    >
+      <View style={{ backgroundColor: colors.surface }}>
+        <MailRow mail={mail} folder={folder} onPress={onPress} ghostMail={ghostMail} />
+      </View>
+    </Swipeable>
   );
 };
 
@@ -272,6 +372,12 @@ const styles = StyleSheet.create({
   attachRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
   attachTxt: { fontSize: 12, color: colors.textMuted },
   sep: { height: 1, backgroundColor: colors.border, marginLeft: 50 },
+  ghostPill: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 8, backgroundColor: "#FFF4E5", borderWidth: 1, borderColor: "#FFE0B2" },
+  ghostPillText: { fontSize: 11 },
+  actionRight: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingHorizontal: 8 },
+  actionLeft: { flexDirection: "row", alignItems: "center", justifyContent: "flex-start", paddingHorizontal: 8 },
+  actionBtn: { width: 78, height: "85%", alignItems: "center", justifyContent: "center", borderRadius: radius.lg, marginHorizontal: 4, gap: 4 },
+  actionText: { color: "#fff", fontWeight: "700", fontSize: 11 },
   empty: { alignItems: "center", marginTop: 60, paddingHorizontal: 40 },
   emptyTitle: { fontSize: 18, fontWeight: "700", color: colors.text, marginTop: 12 },
   emptySub: { color: colors.textMuted, marginTop: 4, textAlign: "center", lineHeight: 19 },
