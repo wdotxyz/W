@@ -75,34 +75,30 @@ export default function SettingsScreen() {
             <Row icon="globe" label="Custom domain" hint={user?.domain_verified ? "Verified" : "Pending DNS"} onPress={() => router.push("/domain-setup")} testID="row-domain" />
           ) : null}
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
-          <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
-          <Row icon="paper-plane" label="Auto-reply" hint={(user as any)?.auto_reply?.enabled ? "On" : "Off"} onPress={() => router.push("/auto-reply")} testID="row-auto-reply" />
           <Row icon="sparkles" label="Action items" hint="AI-extracted" onPress={() => router.push("/actions")} testID="row-actions" />
-          <Row icon="eye-off" label="Ghost Mail" hint={(user as any)?.ghost_mail_enabled === false ? "Off" : "On"} onPress={() => router.push("/ghost-mail")} testID="row-ghost-mail" />
-          <Row icon="key" label="Recovery email" hint={(user as any)?.recovery_email ? "Verified" : "Not set"} onPress={() => router.push("/recovery-email")} testID="row-recovery-email" />
-          <Row icon="shield-checkmark" label="Two-step verification" hint={user?.two_factor_enabled ? "On" : "Off"} onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
-          <Row icon="lock-closed" label="Privacy Policy" onPress={() => router.push("/legal/privacy")} testID="row-privacy" />
-          <Row icon="document-text" label="Terms of Service" onPress={() => router.push("/legal/terms")} testID="row-terms" />
           <Row icon="color-palette" label="Theme" hint="W" />
           <Row icon="help-circle" label="Help & Support" />
-          <Row icon="information-circle" label="About W" hint="v1.0" />
+        </View>
+
+        <Text style={styles.sectionLabel}>Mail</Text>
+        <View style={styles.group}>
+          <Row icon="eye-off" label="Ghost Mail" hint={(user as any)?.ghost_mail_enabled === false ? "Off" : "On"} onPress={() => router.push("/ghost-mail")} testID="row-ghost-mail" />
+          <Row icon="key" label="Recovery email" hint={(user as any)?.recovery_email ? "Verified" : "Not set"} onPress={() => router.push("/recovery-email")} testID="row-recovery-email" />
+          <Row icon="paper-plane" label="Auto-reply" hint={(user as any)?.auto_reply?.enabled ? "On" : "Off"} onPress={() => router.push("/auto-reply")} testID="row-auto-reply" />
+          <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
+        </View>
+
+        <Text style={styles.sectionLabel}>Account</Text>
+        <View style={styles.group}>
+          <Row icon="shield-checkmark" label="Two-step verification" hint={user?.two_factor_enabled ? "On" : "Off"} onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
+          <Row icon="information-circle" label="About W" hint={`v1.0`} onPress={() => router.push("/about")} testID="row-about" />
+          <Row icon="pause-circle-outline" label="Deactivate account" tone="danger" onPress={() => { setConfirmText(""); setStep("choose"); }} testID="row-deactivate" />
         </View>
 
         <TouchableOpacity onPress={onSignOut} style={styles.signOut} testID="signout-btn">
           <Ionicons name="log-out-outline" size={20} color={colors.danger} />
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => { setConfirmText(""); setStep("choose"); }}
-          style={styles.deactivate}
-          testID="deactivate-account-btn"
-          activeOpacity={0.7}
-        >
-          <Ionicons name="pause-circle-outline" size={18} color={colors.danger} />
-          <Text style={styles.deactivateText}>Deactivate account</Text>
-        </TouchableOpacity>
-        <Text style={styles.deactivateHint}>Take a break or permanently delete your data.</Text>
       </ScrollView>
 
       {/* CHOOSER MODAL */}
@@ -223,14 +219,17 @@ export default function SettingsScreen() {
   );
 }
 
-const Row = ({ icon, label, hint, onPress, testID }: any) => (
-  <TouchableOpacity onPress={onPress} disabled={!onPress} activeOpacity={onPress ? 0.6 : 1} style={styles.rowItem} testID={testID}>
-    <View style={styles.rowIcon}><Ionicons name={icon} size={18} color={colors.accent} /></View>
-    <Text style={styles.rowLabel}>{label}</Text>
-    {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
-    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-  </TouchableOpacity>
-);
+const Row = ({ icon, label, hint, onPress, testID, tone }: any) => {
+  const danger = tone === "danger";
+  return (
+    <TouchableOpacity onPress={onPress} disabled={!onPress} activeOpacity={onPress ? 0.6 : 1} style={styles.rowItem} testID={testID}>
+      <View style={[styles.rowIcon, danger && { backgroundColor: "#FDECEC" }]}><Ionicons name={icon} size={18} color={danger ? colors.danger : colors.accent} /></View>
+      <Text style={[styles.rowLabel, danger && { color: colors.danger }]}>{label}</Text>
+      {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
@@ -242,7 +241,8 @@ const styles = StyleSheet.create({
   phone: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   about: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
   editBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
-  group: { marginTop: space.xl, marginHorizontal: space.xl, backgroundColor: colors.surface2, borderRadius: radius.xl, overflow: "hidden" },
+  group: { marginTop: 8, marginHorizontal: space.xl, backgroundColor: colors.surface2, borderRadius: radius.xl, overflow: "hidden" },
+  sectionLabel: { fontSize: 11, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.7, marginTop: space.xl, marginHorizontal: space.xl + 4, marginBottom: 0 },
   rowItem: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12 },
   rowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
   rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: "600" },
