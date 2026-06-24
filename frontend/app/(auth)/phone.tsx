@@ -19,6 +19,8 @@ export default function PhoneScreen() {
   const [country, setCountry] = useState("+1");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
+  const [domainMode, setDomainMode] = useState<"wxyz" | "custom">("wxyz");
+  const [customDomain, setCustomDomain] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -33,9 +35,17 @@ export default function PhoneScreen() {
     return () => clearTimeout(t);
   }, [username]);
 
+  const validDomain = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(customDomain);
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
   const pwdStrong = password.length >= 8 && /[0-9\W_]/.test(password);
-  const isValid = firstName.trim().length >= 2 && lastName.trim().length >= 1 && phone.length >= 6 && usernameStatus.available === true && usernameStatus.tier === "free" && pwdStrong;
+  const isValid =
+    firstName.trim().length >= 2 &&
+    lastName.trim().length >= 1 &&
+    phone.length >= 6 &&
+    usernameStatus.available === true &&
+    usernameStatus.tier === "free" &&
+    pwdStrong &&
+    (domainMode === "wxyz" || (domainMode === "custom" && validDomain));
 
   const onContinue = async () => {
     if (!isValid) return;
@@ -48,7 +58,14 @@ export default function PhoneScreen() {
       });
       router.push({
         pathname: "/(auth)/otp",
-        params: { phone: full, devOtp: res.dev_otp, name: fullName, username: username.trim(), password },
+        params: {
+          phone: full,
+          devOtp: res.dev_otp,
+          name: fullName,
+          username: username.trim(),
+          password,
+          domain: domainMode === "custom" ? customDomain.trim() : "",
+        },
       });
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to send OTP");
@@ -97,7 +114,7 @@ export default function PhoneScreen() {
           </View>
 
           {/* USERNAME */}
-          <Text style={styles.label}>Username</Text>
+          <Text style={styles.label}>Email address</Text>
           <View style={styles.handleRow}>
             <TextInput
               style={styles.handleInput}
@@ -110,8 +127,46 @@ export default function PhoneScreen() {
               maxLength={26}
               testID="signup-username-input"
             />
-            <Text style={styles.domain}>@w.xyz</Text>
+            <TouchableOpacity
+              onPress={() => setDomainMode((m) => (m === "wxyz" ? "custom" : "wxyz"))}
+              style={styles.domainPicker}
+              testID="domain-picker"
+            >
+              <Text style={styles.domain}>
+                {domainMode === "wxyz" ? "@w.xyz" : (customDomain ? `@${customDomain}` : "@your-domain")}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={colors.accent} />
+            </TouchableOpacity>
           </View>
+
+          {domainMode === "custom" && (
+            <View style={styles.customWrap}>
+              <Text style={styles.label}>Your domain</Text>
+              <View style={styles.handleRow}>
+                <TextInput
+                  style={styles.handleInput}
+                  placeholder="janedoe.com"
+                  placeholderTextColor={colors.textMuted}
+                  value={customDomain}
+                  onChangeText={(t) => setCustomDomain(t.toLowerCase().replace(/[^a-z0-9.-]/g, ""))}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  testID="custom-domain-input"
+                />
+              </View>
+              {!!username && !!customDomain && (
+                <View style={styles.previewBox}>
+                  <Text style={styles.previewLabel}>YOUR PRIMARY ADDRESS</Text>
+                  <Text style={styles.previewAddr}>{username}@{customDomain}</Text>
+                  <Text style={styles.previewLabel}>FALLBACK (always yours)</Text>
+                  <Text style={styles.previewFallback}>{username}-{customDomain.replace(/\./g, "-")}@w.xyz</Text>
+                  <Text style={styles.previewHint}>
+                    After signup you&apos;ll get DNS instructions to activate the custom domain. If you ever lose the domain, your @w.xyz fallback stays yours.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
           <View style={styles.statusRow} testID="username-status">
             {usernameStatus.checking ? (
               <><ActivityIndicator size="small" color={colors.textMuted} /><Text style={styles.statusText}>Checking…</Text></>
@@ -230,9 +285,16 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: "row", gap: 10 },
   inputBox: { backgroundColor: colors.surface2, borderRadius: radius.lg, paddingHorizontal: 14 },
   input: { fontSize: 16, color: colors.text, paddingVertical: 14 },
-  handleRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.lg, paddingLeft: 14, paddingRight: 12 },
+  handleRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.lg, paddingLeft: 14, paddingRight: 6 },
   handleInput: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 14, fontWeight: "600", minWidth: 0 },
-  domain: { fontSize: 15, color: colors.accent, fontWeight: "700", flexShrink: 0, marginLeft: 8, includeFontPadding: false as any },
+  domain: { fontSize: 14, color: colors.accent, fontWeight: "700", marginRight: 4 },
+  domainPicker: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
+  customWrap: { marginTop: 14 },
+  previewBox: { marginTop: 10, padding: 12, backgroundColor: "#EEF6F7", borderRadius: 10, borderLeftWidth: 3, borderLeftColor: colors.accent },
+  previewLabel: { fontSize: 10, fontWeight: "800", color: colors.textMuted, letterSpacing: 1, marginBottom: 2, marginTop: 4 },
+  previewAddr: { fontSize: 15, color: colors.text, fontWeight: "700", marginBottom: 4 },
+  previewFallback: { fontSize: 13, color: colors.accent, fontWeight: "600" },
+  previewHint: { fontSize: 11.5, color: colors.textMuted, marginTop: 8, lineHeight: 16 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6, minHeight: 18 },
   statusText: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
   row: { flexDirection: "row", gap: 10 },

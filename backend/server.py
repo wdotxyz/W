@@ -74,6 +74,19 @@ PROFANITY_FRAGMENTS = {
     "spic", "chink", "gook", "tranny", "whore", "slut", "rapist", "rape",
     "nazi", "hitler", "isis", "kkk", "pedophile", "pedo", "molest",
 }
+def _slugify_domain(d: str) -> str:
+    return re.sub(r"[^a-z0-9-]+", "-", (d or "").strip().lower()).strip("-")
+
+
+def _is_valid_domain(d: str) -> bool:
+    if not d:
+        return False
+    d = re.sub(r"^https?://", "", (d or "").strip().lower()).split("/")[0]
+    if len(d) > 253 or "." not in d or d.endswith("."):
+        return False
+    return bool(re.match(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$", d))
+
+
 HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,24}[a-z0-9]$|^[a-z0-9]$")
 
 
@@ -106,7 +119,8 @@ class SendOtpReq(BaseModel):
 class VerifyOtpReq(BaseModel):
     phone: str
     otp: str
-    password: Optional[str] = None  # optional during new signup
+    password: Optional[str] = None
+    domain: Optional[str] = None  # custom domain (e.g. "janedoe.com") — if set, email = handle@domain
 
 
 class CheckoutReq(BaseModel):
@@ -846,9 +860,6 @@ async def start_ai_chat(user=Depends(get_current_user)):
 
 
 # -------------------- Wave Mail --------------------
-class ClaimHandleReq(BaseModel):
-    handle: str
-
 class ComposeMailReq(BaseModel):
     to: List[str]
     subject: str = ""
@@ -1128,23 +1139,123 @@ async def billing_webhook(request: Request):
     return {"ok": True}
 
 
+class ClaimHandleReq(BaseModel):
+    handle: str
+    domain: Optional[str] = None  # if set, primary address = {handle}@{domain}; fallback @w.xyz auto-created
+
+
 @api_router.post("/mail/claim-handle")
 async def claim_handle(req: ClaimHandleReq, user=Depends(get_current_user)):
     h = _validate_handle(req.handle)
     exists = await db.users.find_one({"email_handle": h, "id": {"$ne": user["id"]}}, {"_id": 0, "id": 1})
     if exists:
         raise HTTPException(409, "Handle already taken.")
-    await db.users.update_one({"id": user["id"]}, {"$set": {"email_handle": h, "email_address": f"{h}@{MAIL_DOMAIN}"}})
-    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+
+    update: dict = {"email_handle": h}
+    if req.domain:
+        domain = req.domain.strip().lower()
+        domain = re.sub(r"^https?://", "", domain).split("/")[0]
+        if domain == MAIL_DOMAIN:
+            update["email_address"] = f"{h}@{MAIL_DOMAIN}"
+            update["custom_domain"] = None
+            update["domain_verified"] = True
+            update["fallback_address"] = None
+        else:
+            if not _is_valid_domain(domain):
+                raise HTTPException(400, "That doesn't look like a valid domain.")
+            # Make sure two users don't claim the same domain
+            taken = await db.users.find_one({"custom_domain": domain, "id": {"$ne": user["id"]}}, {"_id": 0, "id": 1})
+            if taken:
+                raise HTTPException(409, "This domain is already in use by another W account.")
+            fallback = f"{h}-{_slugify_domain(domain)}@{MAIL_DOMAIN}"
+            update.update({
+                "email_address": f"{h}@{domain}",
+                "custom_domain": domain,
+                "domain_verified": False,
+                "domain_added_at": now_iso(),
+                "fallback_address": fallback,
+            })
+    else:
+        update["email_address"] = f"{h}@{MAIL_DOMAIN}"
+        update["custom_domain"] = None
+        update["domain_verified"] = True
+        update["fallback_address"] = None
+    await db.users.update_one({"id": user["id"]}, {"$set": update})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return fresh
+
+
+@api_router.get("/domain/dns-records")
+async def domain_dns_records(user=Depends(get_current_user)):
+    """Returns the DNS records the user must add at their registrar to activate
+    their custom domain. These are static instructions — same for everyone."""
+    domain = user.get("custom_domain")
+    if not domain:
+        raise HTTPException(400, "No custom domain configured for this account.")
+    return {
+        "domain": domain,
+        "fallback_address": user.get("fallback_address"),
+        "verified": bool(user.get("domain_verified")),
+        "records": [
+            {"type": "MX", "host": "@", "value": "mx.sendgrid.net", "priority": 10,
+             "purpose": "Route incoming email through W"},
+            {"type": "TXT", "host": "@", "value": "v=spf1 include:sendgrid.net ~all",
+             "purpose": "SPF — authorize W/SendGrid to send mail from your domain"},
+            {"type": "CNAME", "host": "em-w", "value": f"u00000.wl.sendgrid.net",
+             "purpose": "Domain authentication (CNAME) — required for DKIM signing"},
+            {"type": "TXT", "host": "_dmarc", "value": "v=DMARC1; p=none; rua=mailto:dmarc@w.xyz",
+             "purpose": "DMARC policy (optional but recommended)"},
+        ],
+        "instructions": (
+            "Log into your domain registrar (GoDaddy, Cloudflare, Namecheap, Squarespace, etc.), "
+            "open the DNS management page for your domain, and add the records above. "
+            "Most registrars apply changes within a few minutes; some take up to 48 hours. "
+            "Tap 'Verify' below once they're added."
+        ),
+    }
+
+
+@api_router.post("/domain/verify")
+async def domain_verify(user=Depends(get_current_user)):
+    """Resolves the user's custom domain MX records and marks verified if SendGrid is found."""
+    domain = user.get("custom_domain")
+    if not domain:
+        raise HTTPException(400, "No custom domain configured.")
+    try:
+        import socket
+        # Use dnspython if available; otherwise fall back to a basic socket lookup
+        try:
+            import dns.resolver  # type: ignore
+            answers = dns.resolver.resolve(domain, "MX", lifetime=5)
+            hosts = [str(rd.exchange).lower().rstrip(".") for rd in answers]
+        except Exception:
+            # Coarser fallback — just confirm the domain resolves; can't verify MX
+            socket.gethostbyname(domain)
+            hosts = []
+        verified = any("sendgrid" in h for h in hosts)
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"domain_verified": verified,
+                      "domain_verified_at": now_iso() if verified else None,
+                      "domain_last_check_at": now_iso(),
+                      "domain_mx_seen": hosts}},
+        )
+        return {"verified": verified, "mx_records": hosts,
+                "message": "Verified! Custom domain is active." if verified
+                           else "MX records aren't pointing to W yet. Give DNS a few more minutes and try again."}
+    except Exception as e:
+        logger.warning(f"Domain verify failed for {domain}: {e}")
+        return {"verified": False, "mx_records": [], "message": "Couldn't resolve domain. Double-check spelling and DNS settings."}
 
 
 @api_router.get("/mail/inbox")
 async def mail_inbox(user=Depends(get_current_user)):
-    addr = user.get("email_address")
-    if not addr:
+    addr = (user.get("email_address") or "").lower()
+    fb = (user.get("fallback_address") or "").lower()
+    addrs = [a for a in [addr, fb] if a]
+    if not addrs:
         return []
-    msgs = await db.emails.find({"to_addrs": addr.lower(), "folder": "inbox"}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    msgs = await db.emails.find({"to_addrs": {"$in": addrs}, "folder": "inbox"}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return msgs
 
 

@@ -71,6 +71,9 @@ export default function SettingsScreen() {
 
         <View style={styles.group}>
           <Row icon="star" label="W Premium" hint={user?.tier && user.tier !== "free" ? user.tier.toUpperCase() : "Upgrade"} onPress={() => router.push("/billing/upgrade")} testID="row-premium" />
+          {user?.custom_domain ? (
+            <Row icon="globe" label="Custom domain" hint={user?.domain_verified ? "Verified" : "Pending DNS"} onPress={() => router.push("/domain-setup")} testID="row-domain" />
+          ) : null}
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />
           <Row icon="shield-checkmark" label="Two-step verification" hint={user?.two_factor_enabled ? "On" : "Off"} onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />

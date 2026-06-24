@@ -11,7 +11,7 @@ import { colors, radius, space } from "../../src/theme";
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { phone, devOtp, name: signupName, username: signupUsername, password: signupPassword } = useLocalSearchParams<{ phone: string; devOtp?: string; name?: string; username?: string; password?: string }>();
+  const { phone, devOtp, name: signupName, username: signupUsername, password: signupPassword, domain: signupDomain } = useLocalSearchParams<{ phone: string; devOtp?: string; name?: string; username?: string; password?: string; domain?: string }>();
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
@@ -39,12 +39,13 @@ export default function OtpScreen() {
         try {
           user = await api<any>("/mail/claim-handle", {
             method: "POST",
-            body: JSON.stringify({ handle: signupUsername }),
+            body: JSON.stringify({ handle: signupUsername, domain: signupDomain || undefined }),
           });
         } catch {}
       }
       setUser(user);
       if (!user.name) router.replace("/(auth)/profile-setup");
+      else if (user.custom_domain && !user.domain_verified) router.replace("/domain-setup");
       else router.replace("/(tabs)/updates");
     } catch (e: any) {
       Alert.alert("Invalid OTP", "Please check the code and try again.");
