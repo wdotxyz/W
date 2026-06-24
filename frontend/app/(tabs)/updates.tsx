@@ -107,7 +107,7 @@ export default function UpdatesScreen() {
             <View style={styles.empty}>
               <Ionicons name="radio-outline" size={48} color={colors.textMuted} />
               <Text style={styles.emptyTitle}>No updates yet</Text>
-              <Text style={styles.emptySub}>When friends post status updates, they'll show up here. Updates disappear after 24 hours.</Text>
+              <Text style={styles.emptySub}>When contacts post status updates, they will show up here. Updates disappear after 24 hours.</Text>
             </View>
           )}
 

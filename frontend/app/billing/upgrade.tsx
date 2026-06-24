@@ -106,32 +106,6 @@ export default function UpgradeScreen() {
           Custom @w.xyz address is included on every plan — that&apos;s our niche.
         </Text>
 
-        {/* Storage usage bar — shows current consumption against tier limit */}
-        {!!billing && (
-          <View style={styles.storageCard}>
-            <View style={styles.storageHead}>
-              <Text style={styles.storageTitle}>Storage</Text>
-              <Text style={styles.storageStat}>
-                {((billing.storage_used_bytes || 0) / (1024 ** 3)).toFixed(2)} GB of {billing.storage_gb} GB
-              </Text>
-            </View>
-            <View style={styles.storageTrack}>
-              <View
-                style={[
-                  styles.storageFill,
-                  { width: `${Math.min(100, billing.storage_percent || 0)}%` },
-                  (billing.storage_percent || 0) > 90 && { backgroundColor: colors.danger },
-                ]}
-              />
-            </View>
-            <Text style={styles.storageHint}>
-              {(billing.storage_percent || 0) > 90
-                ? "Almost full — upgrade for more room."
-                : `${(100 - (billing.storage_percent || 0)).toFixed(1)}% free on the ${billing.tier_label} plan.`}
-            </Text>
-          </View>
-        )}
-
         {/* Billing-interval toggle */}
         <View style={styles.intervalRow}>
           {(["month", "year"] as const).map((opt) => (
