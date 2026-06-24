@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, padding: space.xl },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -8 },
   body: { flex: 1, marginTop: space.lg },
-  brandLogo: { width: 64, height: 64, marginBottom: 16 },
+  brandLogo: { width: 48, height: 48, marginBottom: 14 },
   title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   sub: { fontSize: 15, color: colors.textMuted, marginTop: 6, marginBottom: 32 },
   code: {

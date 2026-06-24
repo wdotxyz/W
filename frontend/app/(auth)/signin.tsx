@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 24, flexGrow: 1, minHeight: "100%" as any },
 
   brandWrap: { alignItems: "center", marginTop: 12, marginBottom: 20 },
-  brandLogo: { width: 72, height: 72, marginBottom: 10 },
+  brandLogo: { width: 48, height: 48, marginBottom: 10 },
   tag: { fontSize: 14, color: colors.textMuted, marginTop: 2 },
 
   formCard: { marginTop: 8 },

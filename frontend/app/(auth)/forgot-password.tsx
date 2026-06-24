@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: 6 },
   body: { paddingHorizontal: space.xl, paddingTop: 8, paddingBottom: 32 },
-  logo: { width: 64, height: 64, marginBottom: 18 },
+  logo: { width: 48, height: 48, marginBottom: 14 },
   title: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   sub: { fontSize: 14, color: colors.textMuted, marginTop: 8, marginBottom: 16, lineHeight: 20 },
   label: { fontSize: 12, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 14, marginBottom: 8 },
