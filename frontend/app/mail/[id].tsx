@@ -7,6 +7,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import { api } from "../../src/api";
+import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
 
 export default function MailDetail() {
@@ -78,7 +79,10 @@ export default function MailDetail() {
         <View style={styles.metaRow}>
           <View style={styles.avatar}><Text style={styles.avatarTxt}>{(mail.from_name || mail.from_addr || "?").charAt(0).toUpperCase()}</Text></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.fromName}>{mail.from_name || mail.from_addr}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={styles.fromName}>{mail.from_name || mail.from_addr}</Text>
+              <BlueCheck tier={mail.from_tier} size={15} />
+            </View>
             <Text style={styles.fromAddr}>{mail.from_addr}</Text>
             <Text style={styles.toLine}>to {(mail.to_addrs || []).join(", ")}</Text>
           </View>

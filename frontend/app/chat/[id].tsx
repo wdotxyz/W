@@ -11,6 +11,7 @@ import { AudioModule, useAudioRecorder, useAudioPlayer, RecordingPresets } from 
 import * as FileSystem from "expo-file-system";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
+import BlueCheck from "../../src/components/BlueCheck";
 import { Avatar } from "../(tabs)/chats";
 import { colors, radius, space } from "../../src/theme";
 
@@ -138,10 +139,13 @@ export default function ChatScreen() {
         </TouchableOpacity>
         <Avatar uri={chat?.display_avatar} name={chat?.display_name} ai={isAi} size={40} />
         <View style={{ marginLeft: 10, flex: 1 }}>
-          <Text style={styles.headerName} numberOfLines={1}>
-            {chat?.display_name || "Chat"}
-            {isAi && <Text style={{ color: colors.accent }}>  · AI</Text>}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={styles.headerName} numberOfLines={1}>
+              {chat?.display_name || "Chat"}
+              {isAi && <Text style={{ color: colors.accent }}>  · AI</Text>}
+            </Text>
+            <BlueCheck tier={chat?.display_tier} size={16} />
+          </View>
           <Text style={styles.headerSub}>
             {typingUser ? "typing…" : isAi ? "Always available" : chat?.is_group ? `${chat.member_ids?.length || 0} members` : "online"}
           </Text>

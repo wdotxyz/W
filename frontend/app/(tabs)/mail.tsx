@@ -8,6 +8,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
+import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
 
 type Folder = "inbox" | "drafts" | "sent";
@@ -170,6 +171,7 @@ const MailRow = ({ mail, folder, onPress }: any) => {
       <View style={{ flex: 1 }}>
         <View style={styles.rowTop}>
           <Text style={[styles.who, unread && { fontWeight: "800" }]} numberOfLines={1}>{who}</Text>
+          {folder === "inbox" && <BlueCheck tier={mail.from_tier} size={13} />}
           {mail._thread_count > 1 && <Text style={styles.threadCount}>· {mail._thread_count}</Text>}
           <Text style={styles.time}>{formatDate(mail.created_at)}</Text>
         </View>

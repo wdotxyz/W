@@ -671,9 +671,11 @@ async def _serialize_chat(chat: dict, user_id: str) -> dict:
     if not chat.get("is_group") and others:
         chat["display_name"] = others[0].get("name") or others[0].get("phone")
         chat["display_avatar"] = others[0].get("avatar")
+        chat["display_tier"] = _user_tier(others[0])
     else:
         chat["display_name"] = chat.get("name", "Group")
         chat["display_avatar"] = chat.get("avatar")
+        chat["display_tier"] = "free"
     return chat
 
 
@@ -726,11 +728,15 @@ async def send_message(chat_id: str, req: SendMessageReq, user=Depends(get_curre
     chat = await db.chats.find_one({"id": chat_id, "member_ids": user["id"]}, {"_id": 0})
     if not chat:
         raise HTTPException(404, "Chat not found")
+    # Quota check for binary content (images / voice notes)
+    if req.type in ("image", "voice", "file") and req.content:
+        await _check_and_bump_storage(user, _approx_b64_bytes(req.content))
     msg = {
         "id": str(uuid.uuid4()),
         "chat_id": chat_id,
         "sender_id": user["id"],
         "sender_name": user.get("name") or user.get("phone"),
+        "sender_tier": _user_tier(user),
         "type": req.type,
         "content": req.content,
         "duration": req.duration,
@@ -985,13 +991,47 @@ async def billing_plans():
 @api_router.get("/billing/me")
 async def billing_me(user=Depends(get_current_user)):
     tier = _user_tier(user)
+    used = int(user.get("storage_used_bytes", 0) or 0)
+    limit = TIER_STORAGE_GB.get(tier, 1) * 1024 * 1024 * 1024
     return {
         "tier": tier,
         "tier_label": tier.capitalize(),
         "tier_expires_at": user.get("tier_expires_at"),
         "storage_gb": TIER_STORAGE_GB.get(tier, 1),
+        "storage_used_bytes": used,
+        "storage_limit_bytes": limit,
+        "storage_percent": round((used / limit) * 100, 1) if limit else 0,
         "has_blue_check": tier in ("plus", "pro"),
     }
+
+
+def _storage_limit_bytes(user: dict) -> int:
+    return TIER_STORAGE_GB.get(_user_tier(user), 1) * 1024 * 1024 * 1024
+
+
+def _approx_b64_bytes(b64: Optional[str]) -> int:
+    if not b64:
+        return 0
+    # data URI prefix stripped; base64 expands by ~4/3
+    s = b64.split(",", 1)[-1] if b64.startswith("data:") else b64
+    return int(len(s) * 3 / 4)
+
+
+async def _check_and_bump_storage(user: dict, added_bytes: int) -> None:
+    """Raise 413 if the upload would exceed the user's tier quota. Increments counter on success."""
+    if added_bytes <= 0:
+        return
+    limit = _storage_limit_bytes(user)
+    used = int(user.get("storage_used_bytes", 0) or 0)
+    if used + added_bytes > limit:
+        used_gb = used / (1024 ** 3)
+        limit_gb = limit / (1024 ** 3)
+        tier = _user_tier(user)
+        raise HTTPException(
+            413,
+            f"Storage full — {used_gb:.2f} GB of {limit_gb:.0f} GB on the {tier.capitalize()} plan. Upgrade to keep uploading.",
+        )
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"storage_used_bytes": added_bytes}})
 
 
 @api_router.post("/billing/checkout")
@@ -1220,6 +1260,11 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if not req.to or not req.subject and not req.body:
         raise HTTPException(400, "Recipient and subject/body required.")
 
+    # Storage quota check for attachments
+    total_att_bytes = sum(_approx_b64_bytes((a or {}).get("content_b64")) for a in (req.attachments or []))
+    if total_att_bytes > 0:
+        await _check_and_bump_storage(user, total_att_bytes)
+
     from_addr = user["email_address"]
     mail_id = str(uuid.uuid4())
     message_id = f"<{mail_id}@{MAIL_DOMAIN}>"
@@ -1243,6 +1288,7 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
         "folder": "sent",
         "from_addr": from_addr,
         "from_name": user.get("name") or from_addr,
+        "from_tier": _user_tier(user),
         "to_addrs": [a.strip().lower() for a in req.to if a.strip()],
         "subject": req.subject or "(no subject)",
         "body": body_out,
@@ -1382,6 +1428,13 @@ async def mail_inbound(request: Request):
         thread_id = msg_id or str(uuid.uuid4())
 
     stored = 0
+    # If the sender is a @w.xyz user, attach their tier so the inbox can show a blue check
+    sender_tier = "free"
+    if sender and sender.endswith(f"@{MAIL_DOMAIN}"):
+        sender_user = await db.users.find_one({"email_address": sender}, {"_id": 0})
+        if sender_user:
+            sender_tier = _user_tier(sender_user)
+
     for addr in domain_to:
         owner = await db.users.find_one({"email_address": addr}, {"_id": 0})
         if not owner:
@@ -1392,6 +1445,7 @@ async def mail_inbound(request: Request):
             "folder": "inbox",
             "from_addr": sender,
             "from_name": frm.split("<")[0].strip().strip('"') if "<" in frm else sender,
+            "from_tier": sender_tier,
             "to_addrs": to_addrs,
             "subject": subject or "(no subject)",
             "body": text or _strip_html(html),

@@ -7,6 +7,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
+import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
 
 const AI_USER_ID = "ai-assistant-wave";
@@ -63,10 +64,13 @@ export default function ChatsScreen() {
         <Avatar uri={item.display_avatar} name={item.display_name} ai={isAi} />
         <View style={styles.rowMid}>
           <View style={styles.rowTop}>
-            <Text style={styles.name} numberOfLines={1}>
-              {item.display_name || "Chat"}
-              {isAi && <Text style={styles.aiTag}>  · AI</Text>}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+              <Text style={styles.name} numberOfLines={1}>
+                {item.display_name || "Chat"}
+                {isAi && <Text style={styles.aiTag}>  · AI</Text>}
+              </Text>
+              <BlueCheck tier={item.display_tier} size={14} />
+            </View>
             {!!last && <Text style={styles.time}>{formatTime(last.created_at)}</Text>}
           </View>
           <View style={styles.rowBottom}>
