@@ -14,7 +14,7 @@ export default function PhoneScreen() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
-  const [usernameStatus, setUsernameStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean; tier?: "free" | "premium" | "unavailable" }>({});
+  const [usernameStatus, setUsernameStatus] = useState<{ available?: boolean; reason?: string; checking?: boolean; tier?: "free" | "premium" | "reserved" | "unavailable" }>({});
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("+1");
   const [password, setPassword] = useState("");
@@ -65,7 +65,7 @@ export default function PhoneScreen() {
         </TouchableOpacity>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Create your account</Text>
-          <Text style={styles.sub}>Tell us who you are and pick a unique @w.xyz username.</Text>
+          <Text style={styles.sub}>Tell us who you are and pick a unique @w.xyz email address.</Text>
 
           {/* NAME — first + last */}
           <Text style={styles.label}>Name</Text>
@@ -115,6 +115,16 @@ export default function PhoneScreen() {
           <View style={styles.statusRow} testID="username-status">
             {usernameStatus.checking ? (
               <><ActivityIndicator size="small" color={colors.textMuted} /><Text style={styles.statusText}>Checking…</Text></>
+            ) : usernameStatus.tier === "reserved" ? (
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Ionicons name="lock-closed" size={14} color={colors.danger} />
+                  <Text style={[styles.statusText, { color: colors.danger, fontWeight: "700" }]}>Reserved handle</Text>
+                </View>
+                <Text style={[styles.statusText, { marginTop: 2 }]}>
+                  Email <Text style={{ color: colors.accent, fontWeight: "700" }}>support@w.xyz</Text> to request it — may require a premium subscription if released.
+                </Text>
+              </View>
             ) : usernameStatus.tier === "unavailable" ? (
               <><Ionicons name="close-circle" size={16} color={colors.danger} /><Text style={[styles.statusText, { color: colors.danger }]}>{usernameStatus.reason || "Not available"}</Text></>
             ) : usernameStatus.available === true && usernameStatus.tier === "premium" ? (
@@ -126,7 +136,7 @@ export default function PhoneScreen() {
             ) : username.length > 0 && username.length < 4 ? (
               <Text style={styles.statusText}>Handles under 4 characters aren&apos;t available</Text>
             ) : (
-              <Text style={styles.statusText}>6–26 characters. 4–5 are premium · letters, numbers, dashes</Text>
+              <Text style={styles.statusText}>6–26 characters · letters, numbers, dashes</Text>
             )}
           </View>
 

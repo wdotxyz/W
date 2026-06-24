@@ -18,7 +18,7 @@ export default function Terms() {
           body: [
             "You are responsible for keeping your phone number, OTP codes and device secure.",
             "You agree to provide accurate information and to keep it up to date.",
-            "Your @w.xyz handle is yours while your account is active. We may reclaim handles that are inactive, impersonating, or reserved (e.g. admin, support).",
+            "Your @w.xyz handle is yours while your account is active. W reserves the right to deny, reclaim, or retract any handle at any time — including after sign up — when a handle is inactive, impersonates another person or organization, infringes a trademark, contains profanity or slurs, or is otherwise reserved (e.g. admin, support, well-known stage names). To request a reserved handle, email support@w.xyz; release may require a premium subscription.",
           ],
         },
         {

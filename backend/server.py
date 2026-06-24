@@ -28,12 +28,62 @@ TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')
 RESERVED_HANDLES = {
-    "admin", "administrator", "root", "support", "help", "info", "contact",
+    # ── System / role accounts ──
+    "admin", "administrator", "root", "support", "help", "helpdesk", "info", "contact",
     "noreply", "no-reply", "postmaster", "abuse", "hostmaster", "webmaster",
     "mail", "email", "ceo", "legal", "billing", "sales", "security", "team",
-    "wave", "waveai", "ai",
+    "press", "media", "feedback", "newsletter", "marketing", "hr", "jobs",
+    "careers", "privacy", "terms", "policy", "moderator", "mod", "staff",
+    "official", "verified", "premium", "pro", "plus",
+    # ── W / Wave product names ──
+    "wave", "waveai", "ai", "wmail", "w-mail", "w", "ww", "www", "wxyz",
+    # ── Big-tech trademarks ──
+    "apple", "google", "microsoft", "amazon", "meta", "facebook", "instagram",
+    "whatsapp", "twitter", "tiktok", "snapchat", "linkedin", "youtube",
+    "netflix", "spotify", "uber", "lyft", "airbnb", "stripe", "openai", "claude",
+    "anthropic", "gemini", "chatgpt", "github", "gitlab", "dropbox", "slack",
+    "discord", "telegram", "signal", "zoom", "twitch", "reddit", "pinterest",
+    "tesla", "spacex", "nvidia", "oracle", "ibm", "intel", "amd", "samsung",
+    "sony", "huawei", "xiaomi", "lenovo", "dell", "hp",
+    # ── Other major brands ──
+    "nike", "adidas", "puma", "reebok", "gucci", "prada", "chanel", "rolex",
+    "ferrari", "porsche", "lamborghini", "bmw", "mercedes", "audi", "toyota",
+    "honda", "ford", "chevrolet", "starbucks", "mcdonalds", "kfc", "subway",
+    "burgerking", "dominos", "pizzahut", "cocacola", "pepsi", "redbull",
+    # ── Crypto / finance ──
+    "bitcoin", "btc", "ethereum", "eth", "coinbase", "binance", "robinhood",
+    "paypal", "venmo", "cashapp", "visa", "mastercard", "amex",
+    # ── Celebrity stage names / icons (small starter set) ──
+    "beyonce", "drake", "eminem", "rihanna", "kanye", "jayz", "jay-z",
+    "taylorswift", "taylor-swift", "ladygaga", "lady-gaga", "billieeilish",
+    "billie-eilish", "arianagrande", "ariana-grande", "selenagomez",
+    "elonmusk", "elon", "musk", "obama", "biden", "trump", "kardashian",
+    "kim-k", "kimk", "queen", "kingjames", "lebron", "messi", "ronaldo",
+    "mrbeast", "pewdiepie", "ninja", "shroud",
+    # ── Religious / sensitive ──
+    "god", "jesus", "allah", "buddha", "satan", "devil",
+}
+
+# Profanity / slur fragments — block any handle that CONTAINS one of these.
+# Substring match catches "asshole123", "fuckface", "n1gger" etc.
+PROFANITY_FRAGMENTS = {
+    "fuck", "shit", "bitch", "cunt", "asshol", "asshat", "bastard", "dickhead",
+    "pussy", "twat", "wank", "cock", "boob", "tit", "anal", "porn",
+    "nigger", "nigga", "n1gger", "n1gga", "faggot", "fag", "retard", "kike",
+    "spic", "chink", "gook", "tranny", "whore", "slut", "rapist", "rape",
+    "nazi", "hitler", "isis", "kkk", "pedophile", "pedo", "molest",
 }
 HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,24}[a-z0-9]$|^[a-z0-9]$")
+
+
+def _is_reserved_or_profane(h: str) -> bool:
+    if h in RESERVED_HANDLES:
+        return True
+    flat = h.replace("-", "")  # treat "f-u-c-k" the same as "fuck"
+    for frag in PROFANITY_FRAGMENTS:
+        if frag in flat:
+            return True
+    return False
 
 # Handle pricing tiers
 HANDLE_PREMIUM_MIN = 4   # 4–5 chars require premium subscription
@@ -826,15 +876,14 @@ def _validate_handle(h: str, allow_premium: bool = False) -> str:
         raise HTTPException(400, f"Handles under {HANDLE_HARD_MIN} characters aren't available.")
     if tier == "premium" and not allow_premium:
         raise HTTPException(402, "This handle requires a premium subscription.")
-    if h in RESERVED_HANDLES:
-        raise HTTPException(400, "That handle is reserved.")
+    if _is_reserved_or_profane(h):
+        raise HTTPException(403, "That handle isn't available. Email support@w.xyz to request it.")
     return h
 
 
 @api_router.get("/mail/check-handle/{handle}")
 async def check_handle(handle: str, authorization: Optional[str] = Header(None)):
     h = (handle or "").strip().lower()
-    # Always return tier info so the UI can show "Premium" badges
     if not h or len(h) > HANDLE_MAX:
         return {"available": False, "tier": "unavailable", "reason": f"Must be {HANDLE_HARD_MIN}–{HANDLE_MAX} characters."}
     if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$", h):
@@ -842,14 +891,20 @@ async def check_handle(handle: str, authorization: Optional[str] = Header(None))
     tier = _handle_tier(h)
     if tier == "unavailable":
         return {"available": False, "tier": "unavailable", "reason": f"Handles under {HANDLE_HARD_MIN} characters aren't available."}
-    if h in RESERVED_HANDLES:
-        return {"available": False, "tier": tier, "reason": "That handle is reserved."}
+    # Reserved / trademark / profanity / celebrity blocklist
+    if _is_reserved_or_profane(h):
+        return {
+            "available": False,
+            "tier": "reserved",
+            "reason": "Reserved. Email support@w.xyz to request it (may require a premium subscription).",
+            "support_email": "support@w.xyz",
+        }
     exists = await db.users.find_one({"email_handle": h}, {"_id": 0, "id": 1})
     if exists:
         return {"available": False, "tier": tier, "reason": "Already taken."}
     return {
         "available": True,
-        "tier": tier,  # "free" or "premium"
+        "tier": tier,
         "handle": h,
         "address": f"{h}@{MAIL_DOMAIN}",
         "requires_premium": tier == "premium",
