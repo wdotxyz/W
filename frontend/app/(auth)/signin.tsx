@@ -10,8 +10,6 @@ import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
 
-const HANDLE_RE = /^[a-z0-9-]+$/;
-
 export default function SignInScreen() {
   const router = useRouter();
   const { applySession } = useAuth();
@@ -21,20 +19,11 @@ export default function SignInScreen() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Allow typing either the handle ('sam') or the full address ('sam@w.xyz').
-  const normalizeEmail = (raw: string) => {
-    const v = (raw || "").trim().toLowerCase();
-    if (!v) return "";
-    if (v.includes("@")) return v;
-    if (HANDLE_RE.test(v)) return `${v}@w.xyz`;
-    return v;
-  };
-
   const canSubmit = email.trim().length >= 1 && password.length >= 1 && !loading;
 
   const onSignIn = async () => {
     if (!canSubmit) return;
-    const fullEmail = normalizeEmail(email);
+    const fullEmail = email.trim().toLowerCase();
     setLoading(true);
     try {
       const res: any = await api("/auth/login", {
@@ -89,9 +78,9 @@ export default function SignInScreen() {
           <View style={styles.formCard}>
             <Text style={styles.title}>Sign in</Text>
 
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>Email Address</Text>
             <View style={styles.inputBox}>
-              <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.leadingIcon} />
+              <Ionicons name="at-outline" size={18} color={colors.textMuted} style={styles.leadingIcon} />
               <TextInput
                 style={styles.input}
                 value={email}
