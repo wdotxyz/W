@@ -1,0 +1,34 @@
+{
+  "summary": "Focused retest after E1's fix to routers/mail.py for the ghost-mail archived/snoozed deletion bug. Both code changes verified: (1) get_thread no longer stamps read/opened_at on archived or currently-snoozed messages, and (2) close_thread's victim query now excludes archived:true and snoozed_until>now. Focused scenario PASSES: 3 inbound emails in one thread → archive A, snooze B (+1h), GET /mail/thread/{tid} returns all 3 with A & B retaining no opened_at, POST .../close returns deleted=1 with ids=[C], A & B remain queryable via /mail/{id} (200), A appears in /mail/archived, B appears in /mail/snoozed, C is 404. Full regression suite 20/20 passes. No 500s observed in backend logs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mail_management.py",
+    "/app/test_reports/pytest/mail_management_results.xml"
+  ],
+  "action_items": [
+    "None. The ghost-mail archived/snoozed deletion bug from iteration_5 is fully fixed and regression-covered."
+  ],
+  "critical_code_review_comments": [
+    "routers/mail.py:322-329 (get_thread): correctly skips archived & future-snoozed messages from the read/opened_at stamp. Uses string comparison on snoozed_until — works because the codebase stores ISO-8601 UTC timestamps which sort lexicographically. Good.",
+    "routers/mail.py:372-384 (close_thread): victim query now mirrors the /mail/inbox filter (archived:{$ne:true} + $or for snoozed_until missing/null/<=now). Consistent with the rest of the mail module.",
+    "Defense-in-depth note (not a bug): both layers now protect archived/snoozed mails — even if a stale opened_at is somehow set on an archived message (e.g. archived AFTER opening), close_thread's archived:{$ne:true} clause still spares it. Belt-and-suspenders is the right call here."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_mail_management.py (test_08 updated to assert NEW correct behaviour: archived/snoozed messages retain no opened_at after GET /mail/thread; test_09 updated from `deleted >= 1` to strict `deleted == 1 && ids == [C]` plus explicit A/B survival checks via /mail/{id}, /mail/archived, /mail/snoozed)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "seed_data_creation": "Same as iteration_5 — fresh user per run (PHONE=+1777<timestamp>, handle=ghost<timestamp>), fully cleaned up by test_99_cleanup. No persistent seed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: MONGO_URL=mongodb://localhost:27017 DB_NAME=wave_chat EXPO_PUBLIC_BACKEND_URL=<public-url> python -m pytest backend/tests/test_mail_management.py -v. All 20 tests pass in ~9s against the public preview backend. The Twilio path returns HTTP 400 on test numbers but OTP is written to db.otps before the SMS attempt, so verify-otp still works (handled inside test_01_register_user). Ghost-mail regression is now fully locked in.",
+  "rca_of_issue": "Original bug (iteration_5): close_thread deleted archived/snoozed mails because (a) get_thread set opened_at on every inbox message regardless of state, and (b) close_thread's filter only checked folder='inbox' + opened_at + starred!=true. E1's fix patches both layers: get_thread now skips archived/snoozed when stamping opened_at, and close_thread explicitly excludes archived:true and future snoozed_until. Verified end-to-end with focused playbook from review request — only message C (plain inbox) is deleted on close; A (archived) and B (snoozed) survive in their respective folders."
+}

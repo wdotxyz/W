@@ -196,16 +196,35 @@ def test_08_thread_view_marks_opened():
     assert isinstance(body["messages"], list)
     assert len(body["messages"]) == 3
     inbox_msgs = [m for m in body["messages"] if m.get("folder") == "inbox"]
-    assert all(m.get("read") for m in inbox_msgs), "messages should be marked read"
-    assert all(m.get("opened_at") for m in inbox_msgs), "messages should have opened_at"
+    archived_id = state["mail_ids"][0]
+    snoozed_id = state["mail_ids"][1]
+    target_id = state["mail_ids"][2]
+    by_id = {m["id"]: m for m in inbox_msgs}
+    # New behaviour (post-fix): get_thread MUST NOT stamp opened_at / read on
+    # archived or currently-snoozed messages — otherwise close_thread would
+    # nuke them on the next call.
+    assert by_id[archived_id].get("opened_at") in (None, ""), (
+        f"archived msg should NOT have opened_at: {by_id[archived_id].get('opened_at')}"
+    )
+    assert by_id[snoozed_id].get("opened_at") in (None, ""), (
+        f"snoozed msg should NOT have opened_at: {by_id[snoozed_id].get('opened_at')}"
+    )
+    # The plain inbox message MUST be marked read + opened_at
+    assert by_id[target_id].get("read") is True, "plain msg should be marked read"
+    assert by_id[target_id].get("opened_at"), "plain msg should have opened_at"
 
 
 def test_09_close_thread_ghost_deletes_unstarred_opened():
-    """Only the remaining (non-archived/non-snoozed) opened, non-starred messages
-    should be deleted. We archived 1 and snoozed 1 → 1 remains. Should delete 1.
-    But the thread/close query does NOT filter archived/snoozed — it just looks at
-    inbox + opened + non-starred. So actually all 3 are candidates? Let's check.
+    """After fix: close_thread should ONLY ghost-delete the non-archived,
+    non-snoozed, opened, non-starred inbox messages. We have:
+      - mail_ids[0] = archived  → must survive
+      - mail_ids[1] = snoozed (+1h) → must survive
+      - mail_ids[2] = plain inbox, opened → must be deleted
+    Expect deleted == 1 and ids == [mail_ids[2]].
     """
+    archived_id = state["mail_ids"][0]
+    snoozed_id = state["mail_ids"][1]
+    target_id = state["mail_ids"][2]
     r = requests.post(
         f"{API}/mail/thread/{state['thread_id']}/close",
         headers=_auth(state["token"]),
@@ -214,16 +233,36 @@ def test_09_close_thread_ghost_deletes_unstarred_opened():
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["ghost_mail"] is True
-    # Code: query is folder='inbox', opened_at exists, starred != true. No
-    # archived/snoozed filter. So all 3 archived/snoozed messages get nuked.
-    # Document actual count and confirm IDs in body match.
-    assert body["deleted"] >= 1, f"should delete at least 1, got {body['deleted']}"
-    state["deleted_ids"] = body.get("ids", [])
-    state["close_deleted_count"] = body["deleted"]
-    # Verify each deleted id 404s
-    for mid in state["deleted_ids"]:
-        rr = requests.get(f"{API}/mail/{mid}", headers=_auth(state["token"]), timeout=20)
-        assert rr.status_code == 404, f"deleted mail {mid} still exists: {rr.status_code}"
+    assert body["deleted"] == 1, f"expected exactly 1 deletion (C only), got {body['deleted']}: {body}"
+    deleted_ids = body.get("ids", [])
+    assert deleted_ids == [target_id], f"expected only C deleted, got {deleted_ids}"
+    state["deleted_ids"] = deleted_ids
+
+    # C must 404
+    rc = requests.get(f"{API}/mail/{target_id}", headers=_auth(state["token"]), timeout=20)
+    assert rc.status_code == 404, f"C ({target_id}) should be gone, got {rc.status_code}: {rc.text}"
+
+    # A (archived) must still exist
+    ra = requests.get(f"{API}/mail/{archived_id}", headers=_auth(state["token"]), timeout=20)
+    assert ra.status_code == 200, f"archived A ({archived_id}) was wrongly deleted: {ra.status_code} {ra.text}"
+    assert ra.json().get("archived") is True, "A should still be flagged archived"
+
+    # B (snoozed) must still exist
+    rb = requests.get(f"{API}/mail/{snoozed_id}", headers=_auth(state["token"]), timeout=20)
+    assert rb.status_code == 200, f"snoozed B ({snoozed_id}) was wrongly deleted: {rb.status_code} {rb.text}"
+    assert rb.json().get("snoozed_until"), "B should still have snoozed_until set"
+
+    # /mail/archived contains A
+    ra2 = requests.get(f"{API}/mail/archived", headers=_auth(state["token"]), timeout=20)
+    assert ra2.status_code == 200
+    arch_ids = [m["id"] for m in ra2.json()]
+    assert archived_id in arch_ids, f"A missing from /mail/archived: {arch_ids}"
+
+    # /mail/snoozed contains B
+    rs = requests.get(f"{API}/mail/snoozed", headers=_auth(state["token"]), timeout=20)
+    assert rs.status_code == 200
+    snz_ids = [m["id"] for m in rs.json()]
+    assert snoozed_id in snz_ids, f"B missing from /mail/snoozed: {snz_ids}"
 
 
 # ---------------- 5. Star saves thread from ghost ----------------

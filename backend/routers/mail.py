@@ -317,10 +317,16 @@ async def get_thread(thread_id: str, user=Depends(get_current_user)):
     items = await db.emails.find(q, {'_id': 0}).sort('created_at', 1).to_list(500)
     if not items:
         raise HTTPException(404, 'Thread not found')
-    # Mark unread inbound emails as read AND record opened_at if not already
+    # Mark unread inbound emails as read AND record opened_at if not already.
+    # Skip archived / currently-snoozed messages so they don't become Ghost-Mail victims.
     now_s = now_iso()
-    ids_to_open = [m['id'] for m in items
-                   if m.get('folder') == 'inbox' and (not m.get('read') or not m.get('opened_at'))]
+    ids_to_open = [
+        m['id'] for m in items
+        if m.get('folder') == 'inbox'
+           and not m.get('archived')
+           and not (m.get('snoozed_until') and m['snoozed_until'] > now_s)
+           and (not m.get('read') or not m.get('opened_at'))
+    ]
     if ids_to_open:
         await db.emails.update_many(
             {'id': {'$in': ids_to_open}},
@@ -362,12 +368,19 @@ async def close_thread(thread_id: str, user=Depends(get_current_user)):
     if not user.get('ghost_mail_enabled', True):
         return {'deleted': 0, 'ghost_mail': False}
     addrs = _addrs_for(user)
+    now_s = now_iso()
     q = {
         'thread_id': thread_id,
         'folder': 'inbox',
         'to_addrs': {'$in': addrs or [None]},
         'starred': {'$ne': True},
+        'archived': {'$ne': True},
         'opened_at': {'$exists': True, '$ne': None},
+        '$or': [
+            {'snoozed_until': {'$exists': False}},
+            {'snoozed_until': None},
+            {'snoozed_until': {'$lte': now_s}},
+        ],
     }
     victims = await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(200)
     if not victims:
