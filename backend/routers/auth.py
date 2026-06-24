@@ -266,11 +266,13 @@ async def update_profile(req: ProfileReq, user=Depends(get_current_user)):
     update = {'name': req.name, 'avatar': req.avatar, 'about': req.about or user.get('about')}
     await db.users.update_one({'id': user['id']}, {'$set': update})
     user.update(update)
+    user.pop('password_hash', None)
     return user
 
 
 @router.get('/auth/me')
 async def me(user=Depends(get_current_user)):
+    user.pop('password_hash', None)
     return user
 
 
