@@ -150,6 +150,7 @@ async def verify_otp(req: VerifyOtpReq):
         raise HTTPException(400, "Invalid OTP")
     user = await db.users.find_one({"phone": req.phone}, {"_id": 0})
     is_new = False
+    reactivated = False
     if not user:
         is_new = True
         user = {
@@ -163,9 +164,18 @@ async def verify_otp(req: VerifyOtpReq):
         }
         await db.users.insert_one(user)
         user.pop("_id", None)
+    elif user.get("deactivated"):
+        # Auto-reactivate when a deactivated user signs back in
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"deactivated": False, "reactivated_at": now_iso()},
+             "$unset": {"deactivated_at": ""}},
+        )
+        user["deactivated"] = False
+        reactivated = True
     await db.otps.delete_one({"phone": req.phone})
     token = make_token(user["id"])
-    return {"token": token, "user": user, "is_new": is_new}
+    return {"token": token, "user": user, "is_new": is_new, "reactivated": reactivated}
 
 
 @api_router.post("/auth/profile")
@@ -179,6 +189,20 @@ async def update_profile(req: ProfileReq, user=Depends(get_current_user)):
 @api_router.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return user
+
+
+@api_router.post("/auth/deactivate")
+async def deactivate_account(user=Depends(get_current_user)):
+    """Soft-disable the user's account. They are hidden from people-search,
+    new chats cannot be started with them, but their data stays so they can
+    reactivate just by signing back in with their phone number.
+    """
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"deactivated": True, "deactivated_at": now_iso()}},
+    )
+    logger.info(f"Account deactivated: user_id={user['id']} handle={user.get('email_handle')}")
+    return {"deactivated": True}
 
 
 @api_router.delete("/auth/me")
@@ -248,7 +272,10 @@ async def update_signature(req: SignatureReq, user=Depends(get_current_user)):
 # -------------------- Users --------------------
 @api_router.get("/users")
 async def list_users(user=Depends(get_current_user)):
-    users = await db.users.find({"id": {"$ne": user["id"]}}, {"_id": 0}).to_list(500)
+    users = await db.users.find(
+        {"id": {"$ne": user["id"]}, "deactivated": {"$ne": True}},
+        {"_id": 0},
+    ).to_list(500)
     return users
 
 
