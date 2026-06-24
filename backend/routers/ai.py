@@ -10,7 +10,9 @@ from pydantic import BaseModel
 from core.db import db
 from core.security import get_current_user
 from services.ai_assist import (
-    compose_email, rewrite_text, smart_reply_suggestions, suggest_subjects, summarize_thread,
+    compose_email, extract_actions, rewrite_text,
+    smart_reply_suggestions, suggest_subjects, summarize_thread,
+    transcribe_audio_b64, voice_to_email,
 )
 
 router = APIRouter()
@@ -108,3 +110,53 @@ async def ai_summarize_thread(thread_id: str, user=Depends(get_current_user)):
         raise HTTPException(404, 'Thread not found')
     out = await summarize_thread(msgs)
     return out
+
+
+# -------------------- Voice → Email --------------------
+class VoiceReq(BaseModel):
+    audio_b64: str
+    mime_type: Optional[str] = 'audio/m4a'
+    polish: bool = True  # Run Claude polish after Whisper
+
+
+@router.post('/ai/voice-to-email')
+async def ai_voice_to_email(req: VoiceReq, user=Depends(get_current_user)):
+    if not req.audio_b64:
+        raise HTTPException(400, 'No audio payload.')
+    try:
+        transcript = await transcribe_audio_b64(req.audio_b64, req.mime_type or 'audio/m4a')
+    except ValueError as ve:
+        raise HTTPException(400, str(ve))
+    except Exception as e:
+        raise HTTPException(502, f'Transcription failed: {str(e)[:160]}')
+    transcript = (transcript or '').strip()
+    if not transcript:
+        raise HTTPException(422, "Couldn't transcribe that — please try again.")
+    if not req.polish:
+        return {'transcript': transcript, 'subject': '', 'body': transcript}
+    polished = await voice_to_email(transcript)
+    return polished
+
+
+# -------------------- Action Extractor --------------------
+@router.get('/ai/actions')
+async def ai_actions(user=Depends(get_current_user)):
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    addrs = [a for a in [addr, fb] if a]
+    if not addrs:
+        return {'actions': []}
+    # Pull most recent inbox + starred — 25 emails max, then group by thread
+    emails = await db.emails.find(
+        {'to_addrs': {'$in': addrs}, 'folder': 'inbox',
+         'archived': {'$ne': True}, '$or': [{'snoozed_until': {'$exists': False}}, {'snoozed_until': None}]},
+        {'_id': 0},
+    ).sort('created_at', -1).to_list(25)
+    threads: dict = {}
+    for m in emails:
+        tid = m.get('thread_id') or m.get('id')
+        if tid not in threads:
+            threads[tid] = {'thread_id': tid, 'subject': m.get('subject') or '(no subject)', 'messages': []}
+        threads[tid]['messages'].append({'from_addr': m.get('from_addr'), 'body': m.get('body')})
+    actions = await extract_actions(list(threads.values()))
+    return {'actions': actions}

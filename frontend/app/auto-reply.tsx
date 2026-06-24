@@ -15,6 +15,7 @@ type AutoReply = {
   body: string;
   start_at?: string | null;
   end_at?: string | null;
+  ai_enabled?: boolean;
 };
 
 const DEFAULT_SUBJECT = "Out of office";
@@ -23,37 +24,63 @@ const DEFAULT_BODY = "Thanks for reaching out — I'm currently away and will re
 export default function AutoReplyScreen() {
   const router = useRouter();
   const [enabled, setEnabled] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [body, setBody] = useState(DEFAULT_BODY);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tier, setTier] = useState<string>("free");
 
   useEffect(() => {
     (async () => {
       try {
-        const ar = await api<AutoReply>("/auth/auto-reply");
+        const ar = await api<any>("/auth/auto-reply");
         setEnabled(!!ar.enabled);
+        setAiEnabled(!!ar.ai_enabled);
         setSubject(ar.subject || DEFAULT_SUBJECT);
         setBody(ar.body || DEFAULT_BODY);
       } catch (e) { /* ignore */ }
+      try {
+        const me = await api<{ tier: string }>("/billing/me");
+        setTier(me.tier || "free");
+      } catch (_) { /* ignore */ }
       finally { setLoading(false); }
     })();
   }, []);
 
+  const canUseAi = tier === "plus" || tier === "pro";
+
   const onSave = async () => {
-    if (enabled && !body.trim()) { Alert.alert("Add a reply message before enabling."); return; }
+    if (enabled && !aiEnabled && !body.trim()) { Alert.alert("Add a reply message or enable Smart Auto-Reply."); return; }
     setSaving(true);
     try {
-      const payload: AutoReply = {
+      const payload = {
         enabled,
+        ai_enabled: aiEnabled,
         subject: subject.trim() || DEFAULT_SUBJECT,
         body: body.trim(),
       };
       await api("/auth/auto-reply", { method: "PATCH", body: JSON.stringify(payload) });
-      Alert.alert(enabled ? "Auto-reply on" : "Auto-reply off", enabled ? "We'll reply to incoming mail for you." : "Auto-replies are now disabled.");
+      Alert.alert(
+        enabled ? "Auto-reply on" : "Auto-reply off",
+        enabled
+          ? (aiEnabled ? "W AI will reply to incoming mail for you." : "We'll reply to incoming mail for you.")
+          : "Auto-replies are now disabled."
+      );
       router.back();
     } catch (e: any) { Alert.alert("Couldn't save", e.message); }
     finally { setSaving(false); }
+  };
+
+  const toggleAi = (v: boolean) => {
+    if (v && !canUseAi) {
+      Alert.alert("Plus or Pro required", "Smart Auto-Reply uses W AI to write personalized replies. Upgrade to enable it.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Upgrade", onPress: () => router.push("/billing/upgrade") },
+      ]);
+      return;
+    }
+    setAiEnabled(v);
   };
 
   if (loading) {
@@ -89,6 +116,24 @@ export default function AutoReplyScreen() {
               trackColor={{ false: "#CBD5E0", true: colors.accent }}
               thumbColor="#fff"
               testID="auto-reply-switch"
+            />
+          </View>
+
+          <View style={[styles.toggleRow, !canUseAi && { opacity: 0.85 }]} testID="auto-reply-ai-row">
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>✨ Smart Auto-Reply {!canUseAi && <Text style={{ color: colors.accent, fontSize: 11 }}> · Plus / Pro</Text>}</Text>
+              <Text style={styles.toggleHint}>
+                {aiEnabled
+                  ? "W AI reads each incoming email and writes a personalized reply for you."
+                  : "Let W AI personalize each reply using the incoming message. Your text below becomes optional context."}
+              </Text>
+            </View>
+            <Switch
+              value={aiEnabled}
+              onValueChange={toggleAi}
+              trackColor={{ false: "#CBD5E0", true: colors.accent }}
+              thumbColor="#fff"
+              testID="auto-reply-ai-switch"
             />
           </View>
 

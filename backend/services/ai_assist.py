@@ -3,11 +3,15 @@
 Kept separate from `services/ai.py` (which is the chat-assistant conversation handler)
 because these are one-shot transactional prompts, not multi-turn sessions.
 """
-from typing import List, Optional
+import base64
+import os
+import tempfile
+from typing import Dict, List, Optional
 import json
 import re
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
 
 from core.config import EMERGENT_LLM_KEY
 from core.db import logger
@@ -175,3 +179,138 @@ async def summarize_thread(messages: List[dict]) -> dict:
         items = []
     items = [str(x).strip().lstrip('-• ').strip() for x in items if str(x).strip()][:6]
     return {'summary': summary, 'action_items': items}
+
+
+
+# -------------------- Voice → Email (Whisper STT + Claude polish) --------------------
+_AUDIO_EXT_BY_MIME = {
+    'audio/m4a': 'm4a', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a',
+    'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mpga': 'mpga',
+    'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav',
+    'audio/webm': 'webm', 'audio/ogg': 'webm', 'audio/aac': 'm4a',
+}
+
+
+async def transcribe_audio_b64(audio_b64: str, mime_type: str = 'audio/m4a') -> str:
+    """Decode base64 audio, write to a temp file, transcribe with Whisper."""
+    if not EMERGENT_LLM_KEY:
+        return ''
+    if not audio_b64:
+        return ''
+    if audio_b64.startswith('data:'):
+        audio_b64 = audio_b64.split(',', 1)[-1]
+    try:
+        raw = base64.b64decode(audio_b64)
+    except Exception:
+        raise ValueError('Audio payload is not valid base64.')
+    ext = _AUDIO_EXT_BY_MIME.get((mime_type or '').lower(), 'm4a')
+    tmp = tempfile.NamedTemporaryFile(prefix='w-voice-', suffix=f'.{ext}', delete=False)
+    try:
+        tmp.write(raw)
+        tmp.flush()
+        tmp.close()
+        stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+        # NOTE: Pass an opened file handle — emergentintegrations / litellm's
+        # OpenAI client expects bytes/IO, not a path string. Passing a string
+        # path triggers: "Expected entry at `file` to be bytes, io.IOBase…".
+        with open(tmp.name, 'rb') as fh:
+            resp = await stt.transcribe(file=fh, model='whisper-1', response_format='json')
+        text = getattr(resp, 'text', None)
+        if text is None and isinstance(resp, dict):
+            text = resp.get('text')
+        return (text or '').strip()
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+
+_VOICE_TO_EMAIL_SYSTEM = (
+    "You take a quickly-spoken voice memo and turn it into a polished email. "
+    "Fix grammar, remove filler words, structure into 1-3 short paragraphs. "
+    "Output STRICT JSON: {\"subject\": \"...\", \"body\": \"...\"}."
+)
+
+
+async def voice_to_email(transcript: str) -> dict:
+    if not transcript or not transcript.strip():
+        return {'subject': '', 'body': '', 'transcript': transcript}
+    raw = await _ask_claude(_VOICE_TO_EMAIL_SYSTEM, f"Voice memo:\n{transcript}", session_id='w-voice-to-email')
+    data = _extract_json(raw) or {}
+    return {
+        'subject': str(data.get('subject') or '').strip()[:200],
+        'body': str(data.get('body') or transcript).strip(),
+        'transcript': transcript,
+    }
+
+
+# -------------------- Smart Auto-Reply (Pro) --------------------
+_AI_AUTOREPLY_SYSTEM = (
+    "You are writing a polite, concise auto-reply on behalf of the user. "
+    "Acknowledge the incoming message in 1-2 short paragraphs. "
+    "If a clear action is requested, briefly say when the user will respond or what to expect. "
+    "Don't make up facts or commitments. "
+    "Output ONLY the reply text — no JSON, no preamble."
+)
+
+
+async def ai_compose_reply(owner: dict, incoming_subject: str, incoming_body: str,
+                            note: Optional[str] = None) -> str:
+    name = (owner or {}).get('name') or 'the recipient'
+    prompt = (
+        f"Write the reply on behalf of {name}.\n"
+        + (f"User's note (optional context): {note}\n" if note else '')
+        + f"\n--- Incoming subject ---\n{incoming_subject}\n"
+        + f"\n--- Incoming body ---\n{(incoming_body or '')[:6000]}\n\n"
+        + 'Now write the reply.'
+    )
+    out = await _ask_claude(_AI_AUTOREPLY_SYSTEM, prompt, session_id='w-ai-autoreply')
+    return (out or '').strip().strip('`').strip('"')
+
+
+# -------------------- Action Extractor --------------------
+_ACTIONS_SYSTEM = (
+    "You scan a user's email threads and extract concrete action items they need to do.\n"
+    "For each action, infer a due_date if mentioned (ISO 8601, e.g. 2026-07-15 or 2026-07-15T14:00:00). "
+    "Set type to 'task', 'meeting', or 'deadline'.\n"
+    "Skip newsletters, marketing emails, and FYI-only messages. "
+    "Output STRICT JSON: {\"actions\": [{\"title\":\"...\",\"due_date\":\"...\"|null,\"type\":\"...\",\"source_thread_id\":\"...\",\"source_subject\":\"...\"}]}"
+)
+
+
+async def extract_actions(threads: List[Dict]) -> List[Dict]:
+    """Given a list of {thread_id, subject, messages:[{from_addr,body}]}, return action items."""
+    if not threads:
+        return []
+    blocks = []
+    for t in threads[:15]:
+        msg_summary = []
+        for m in (t.get('messages') or [])[:4]:
+            body = (m.get('body') or '').strip()[:1200]
+            msg_summary.append(f"From {m.get('from_addr') or 'unknown'}: {body}")
+        blocks.append(
+            f"---\nthread_id: {t.get('thread_id')}\nsubject: {t.get('subject') or '(no subject)'}\n"
+            + '\n\n'.join(msg_summary)
+        )
+    prompt = '\n\n'.join(blocks) + '\n\nReturn the JSON now.'
+    raw = await _ask_claude(_ACTIONS_SYSTEM, prompt, session_id='w-actions', max_chars_in=24000)
+    data = _extract_json(raw) or {}
+    items = data.get('actions') if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return []
+    cleaned: List[Dict] = []
+    for it in items[:20]:
+        if not isinstance(it, dict):
+            continue
+        title = str(it.get('title') or '').strip()
+        if not title:
+            continue
+        cleaned.append({
+            'title': title[:240],
+            'due_date': (str(it.get('due_date')).strip() if it.get('due_date') else None),
+            'type': str(it.get('type') or 'task').lower(),
+            'source_thread_id': str(it.get('source_thread_id') or '').strip(),
+            'source_subject': str(it.get('source_subject') or '').strip()[:200],
+        })
+    return cleaned

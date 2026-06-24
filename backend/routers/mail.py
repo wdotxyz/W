@@ -21,6 +21,7 @@ from services.helpers import (
     _text_to_plain, _user_tier, _validate_handle,
 )
 from services.sendgrid_mail import send_system_email
+from services.ai_assist import ai_compose_reply
 
 router = APIRouter()
 
@@ -674,13 +675,15 @@ async def mail_inbound(request: Request):
         stored += 1
         await ws_manager.send_to_user(owner['id'], {'type': 'new_email', 'email': rec})
         # Optional out-of-office auto-reply
-        await _maybe_send_auto_reply(owner, sender, subject, in_reply_to=msg_id)
+        await _maybe_send_auto_reply(owner, sender, subject, in_reply_to=msg_id,
+                                       incoming_body=(text or _strip_html(html)))
 
     return {'ok': True, 'stored': stored}
 
 
 async def _maybe_send_auto_reply(owner: dict, sender: str, original_subject: str,
-                                  in_reply_to: Optional[str] = None) -> None:
+                                  in_reply_to: Optional[str] = None,
+                                  incoming_body: str = '') -> None:
     """If the recipient has an active auto-reply, fire one back via SendGrid.
 
     Anti-loop safeguards:
@@ -689,7 +692,11 @@ async def _maybe_send_auto_reply(owner: dict, sender: str, original_subject: str
       * Skip if sender is the owner's own W address (prevents self-loops).
     """
     ar = (owner or {}).get('auto_reply') or {}
-    if not ar.get('enabled') or not ar.get('body'):
+    if not ar.get('enabled'):
+        return
+    has_static = bool(ar.get('body'))
+    has_ai = bool(ar.get('ai_enabled')) and _user_tier(owner) in ('plus', 'pro')
+    if not has_static and not has_ai:
         return
     if not sender or '@' not in sender:
         return
@@ -721,8 +728,27 @@ async def _maybe_send_auto_reply(owner: dict, sender: str, original_subject: str
     if original_subject and not reply_subject.lower().startswith('re:'):
         reply_subject = f'{reply_subject}: Re: {original_subject}'
 
-    text_body = ar['body']
-    html_body = _text_to_html(ar['body'], owner.get('name') or owner_addr)
+    # AI mode: generate a personalised reply from the inbound email (Pro feature).
+    text_body = ar.get('body') or ''
+    if ar.get('ai_enabled') and _user_tier(owner) in ('plus', 'pro'):
+        try:
+            ai_text = await ai_compose_reply(
+                owner=owner,
+                incoming_subject=original_subject or '',
+                incoming_body=incoming_body or '',
+                note=ar.get('body') or None,  # the static body becomes optional "context note"
+            )
+            if ai_text:
+                text_body = ai_text
+        except Exception as e:
+            owner_id = owner.get('id')
+            logger.warning(f'AI auto-reply generation failed for {owner_id}: {e}')
+            if not text_body:
+                return  # No fallback content; skip rather than send empty
+    if not text_body:
+        return
+
+    html_body = _text_to_html(text_body, owner.get('name') or owner_addr)
     try:
         send_system_email(
             to_email=sender,

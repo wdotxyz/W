@@ -497,16 +497,22 @@ async def get_auto_reply(user=Depends(get_current_user)):
 
 @router.patch('/auth/auto-reply')
 async def update_auto_reply(req: AutoReplyReq, user=Depends(get_current_user)):
+    existing = user.get('auto_reply') or {}
     settings = {
         'enabled': bool(req.enabled),
-        'subject': (req.subject or '').strip()[:200],
-        'body': (req.body or '').strip()[:4000],
-        'start_at': req.start_at,
-        'end_at': req.end_at,
+        'subject': (req.subject if req.subject is not None else existing.get('subject', '')).strip()[:200],
+        'body': (req.body if req.body is not None else existing.get('body', '')).strip()[:4000],
+        'start_at': req.start_at if req.start_at is not None else existing.get('start_at'),
+        'end_at': req.end_at if req.end_at is not None else existing.get('end_at'),
+        'ai_enabled': bool(req.ai_enabled) if req.ai_enabled is not None else bool(existing.get('ai_enabled')),
         'updated_at': now_iso(),
     }
-    if settings['enabled'] and not settings['body']:
-        raise HTTPException(400, 'Add a reply message before enabling auto-reply.')
+    # Pro-gate: ai_enabled requires Plus or Pro
+    if settings['ai_enabled'] and _user_tier(user) not in ('plus', 'pro'):
+        raise HTTPException(402, 'Smart Auto-Reply (AI) is a Plus or Pro feature. Upgrade to let W AI reply for you.')
+    # When AI mode is on, body becomes optional (AI writes from incoming context).
+    if settings['enabled'] and not settings['ai_enabled'] and not settings['body']:
+        raise HTTPException(400, 'Add a reply message or enable Smart Auto-Reply (AI).')
     if settings['enabled'] and not settings['subject']:
         settings['subject'] = 'Out of office'
     await db.users.update_one({'id': user['id']}, {'$set': {'auto_reply': settings}})

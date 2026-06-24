@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import { AudioModule, useAudioRecorder, RecordingPresets } from "expo-audio";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
@@ -28,6 +29,12 @@ export default function Compose() {
   const [draftId, setDraftId] = useState<string | undefined>(params.draftId);
   const [draftSaved, setDraftSaved] = useState<string | null>(null);
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
+  // Voice → Email state
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
+  const recordingTimer = useRef<any>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
@@ -94,6 +101,58 @@ export default function Compose() {
   };
 
   const removeAtt = (i: number) => setAtts((p) => p.filter((_, idx) => idx !== i));
+
+  // ---------------- Voice → Email ----------------
+  const startVoice = async () => {
+    try {
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Microphone access needed", "Enable microphone in Settings to dictate emails with W AI.");
+        return;
+      }
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setIsRecording(true);
+      setRecordSeconds(0);
+      recordingTimer.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch (e: any) {
+      Alert.alert("Couldn't start recording", e.message);
+    }
+  };
+
+  const stopVoice = async () => {
+    try {
+      clearInterval(recordingTimer.current);
+      recordingTimer.current = null;
+      await audioRecorder.stop();
+      setIsRecording(false);
+      const uri = audioRecorder.uri;
+      if (!uri) { Alert.alert("Nothing recorded"); return; }
+      setTranscribing(true);
+      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const mime = Platform.OS === "ios" ? "audio/m4a" : "audio/m4a";
+      const res = await api<{ transcript: string; subject: string; body: string }>("/ai/voice-to-email", {
+        method: "POST",
+        body: JSON.stringify({ audio_b64: b64, mime_type: mime, polish: true }),
+      });
+      if (res.subject && !subject.trim()) setSubject(res.subject);
+      setBody((prev) => (prev.trim() ? `${prev.trim()}\n\n${res.body}` : res.body));
+    } catch (e: any) {
+      Alert.alert("Voice → email failed", e.message);
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const cancelVoice = async () => {
+    try {
+      clearInterval(recordingTimer.current);
+      recordingTimer.current = null;
+      await audioRecorder.stop();
+    } catch (_) {}
+    setIsRecording(false);
+    setRecordSeconds(0);
+  };
 
   // ---------------- AI Compose / Rewrite ----------------
   const onAiDraft = async () => {
@@ -238,6 +297,29 @@ export default function Compose() {
             <TouchableOpacity style={styles.attBtn} onPress={() => setAiMenuOpen(true)} testID="compose-ai-magic">
               {aiBusy ? <ActivityIndicator color={colors.accent} size="small" /> : <Ionicons name="sparkles" size={18} color={colors.accent} />}
               <Text style={styles.attBtnText}>{aiBusy ? "Thinking…" : "W AI"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.attBtn, isRecording && { backgroundColor: colors.danger }]}
+              onPress={isRecording ? stopVoice : startVoice}
+              disabled={transcribing}
+              testID="compose-voice"
+            >
+              {transcribing ? (
+                <>
+                  <ActivityIndicator color={colors.accent} size="small" />
+                  <Text style={styles.attBtnText}>Transcribing…</Text>
+                </>
+              ) : isRecording ? (
+                <>
+                  <Ionicons name="stop" size={18} color="#fff" />
+                  <Text style={[styles.attBtnText, { color: "#fff" }]}>Stop · {String(Math.floor(recordSeconds/60)).padStart(1,"0")}:{String(recordSeconds%60).padStart(2,"0")}</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="mic" size={18} color={colors.accent} />
+                  <Text style={styles.attBtnText}>Voice</Text>
+                </>
+              )}
             </TouchableOpacity>
             <TouchableOpacity style={styles.attBtn} onPress={addImage} testID="compose-attach-image">
               <Ionicons name="image" size={18} color={colors.accent} />

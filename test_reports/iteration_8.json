@@ -1,0 +1,44 @@
+{
+  "summary": "Full backend verification of the 3 new AI features (voice-to-email, Smart Auto-Reply Pro gate, AI Action Extractor). 21/22 tests passed, 1 skipped (outbound Wikipedia download blocked in sandbox). Found and FIXED one real bug in services/ai_assist.py: OpenAISpeechToText.transcribe was being passed a string file path, which litellm/OpenAI rejects with 'Expected entry at `file` to be bytes/io.IOBase/PathLike/tuple'. Fixed by opening the file handle ('rb') before passing in. After fix, Whisper transcribes silent WAV (returns 'you' hallucination, as expected) and Claude polishes into subject+body. All Pro-gate and Action-Extractor flows green; Claude correctly extracts 3 actions from 3 seeded inbound emails with full schema (title/due_date/type/source_thread_id/source_subject). No 500s observed. EMERGENT_LLM_KEY confirmed live for both Claude and Whisper.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/send-otp",
+        "issue": "Twilio is enabled in env; for trial accounts, unverified 'To' numbers (e.g. +1777xxxxxxx) yield HTTPException 400 (not 21608) so dev_otp is NOT returned. The OTP IS still written to Mongo BEFORE the SMS attempt, so backend testing can recover by querying db.otps directly — but any UI flow expecting dev_otp in the response on those numbers will break. Consider catching code 21211 (Invalid 'To') the same way as 21608."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_voice_autoreply_actions.py",
+    "/app/test_reports/pytest/voice_autoreply_actions_results.xml"
+  ],
+  "action_items": [
+    "Voice-to-email STT bug already fixed in this iteration (services/ai_assist.py:transcribe_audio_b64). Please review the diff — passing a path string into OpenAISpeechToText.transcribe was a 100%-failure case for ANY audio (always 502).",
+    "Optional: also handle Twilio code 21211 ('Invalid To') in routers/auth.py:send_otp so dev OTP is returned in dev fallback rather than 400. Today UI consumers will see a hard error on unverified phones."
+  ],
+  "critical_code_review_comments": [
+    "services/ai_assist.py:transcribe_audio_b64 — BUG (now fixed): `OpenAISpeechToText.transcribe(file=tmp.name, ...)` passes a string path; emergentintegrations forwards it to litellm.atranscription which forwards to OpenAI's client, which throws APIConnectionError. The fix is to wrap in `with open(tmp.name, 'rb') as fh: stt.transcribe(file=fh, ...)`. This was raising as a generic Exception and being mapped to 502, so the contract masked the wiring failure — every voice-to-email call would silently fail.",
+    "routers/ai.py:ai_voice_to_email correctly classifies errors (ValueError -> 400, generic -> 502, empty transcript -> 422). Good separation.",
+    "routers/auth.py:update_auto_reply Pro gate is clean: ai_enabled flag check happens before the empty-body check, so the Pro-only error path 402 is reached even with empty body (matches spec). The 'when ai_enabled is on, body becomes optional' logic at line 514 is correct.",
+    "routers/ai.py:ai_actions correctly filters to inbox + non-archived + non-snoozed, groups by thread, and bounds at 25/15. extract_actions returns clean schema with title/due_date/type/source_thread_id/source_subject; type defaults to 'task' if missing.",
+    "services/ai_assist.py:extract_actions has good safety: type-checks each item is a dict, requires non-empty title, caps at 20 items, truncates strings. No 500 surface for malformed Claude output.",
+    "routers/mail.py:_maybe_send_auto_reply: AI mode falls back to static body if AI call returns empty — graceful degradation. owner_id privacy: tier_expires_at check is enforced via _user_tier (recomputed on every webhook fire), so an expired Plus user automatically loses AI auto-reply without needing a cron."
+  ],
+  "updated_files": [
+    "/app/backend/services/ai_assist.py (FIXED Whisper string-path bug — now uses `with open(tmp.name, 'rb') as fh` and passes the file handle to OpenAISpeechToText.transcribe)",
+    "/app/backend/tests/test_voice_autoreply_actions.py (NEW — 22 tests covering voice-to-email × 6, auto-reply Pro gate × 6, ai actions × 3, regression × 4, cleanup × 2, fallback OTP read from Mongo when Twilio rejects unverified)"
+  ],
+  "success_rate": {"backend": "100% (21/21 ran, 1 skipped)", "frontend": "N/A (not requested)"},
+  "seed_data_creation": "Fresh user per run (PHONE=+1777<timestamp>, HANDLE=voicet<timestamp>). User promoted to tier='plus' with tier_expires_at +30d directly in Mongo for the Pro-gate tests. 3 inbound emails seeded via /mail/inbound for action extraction. test_99_cleanup wipes users/handles/otps/emails/auto_reply_log afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_voice_autoreply_actions.py is the canonical regression for these 3 features. Re-runs in ~16s (1 Whisper call + ~3 Claude calls). The Wikipedia OGG download (test_13) is auto-skipped if the sandbox can't reach upload.wikimedia.org — that's fine, test_12 already proves Whisper is wired. EMERGENT_LLM_KEY is shared across Whisper STT and Claude Sonnet 4.5; if rotated, expect test_12 to flip back to 502 (the route's correct contract) — that's the signal to refresh the key.",
+  "rca_of_issue": "BUG: All voice-to-email calls returned 502 because services/ai_assist.py was passing a string path to OpenAISpeechToText.transcribe. Repro: POST /api/ai/voice-to-email with ANY valid base64 audio → 502. Backend log shows 'Failed to transcribe audio: ... Expected entry at `file` to be bytes, io.IOBase instance, PathLike or a tuple but received <class str>'. Root cause: emergentintegrations passes the `file` kwarg straight through to litellm.atranscription -> OpenAI client, which rejects bare strings. Mitigation: open the file in binary mode and pass the handle. Verified end-to-end: silent WAV → 200 with transcript='you' and Claude-polished subject+body. Fix committed in this run."
+}

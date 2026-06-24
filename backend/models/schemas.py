@@ -136,6 +136,7 @@ class AutoReplyReq(BaseModel):
     body: Optional[str] = None
     start_at: Optional[str] = None
     end_at: Optional[str] = None
+    ai_enabled: Optional[bool] = None  # Pro: let W AI write personalized replies
 
 
 class GhostMailReq(BaseModel):
