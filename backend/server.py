@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 import jwt as pyjwt
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -106,6 +107,11 @@ class VerifyOtpReq(BaseModel):
     phone: str
     otp: str
     password: Optional[str] = None  # optional during new signup
+
+
+class CheckoutReq(BaseModel):
+    tier: str  # "plus" | "pro"
+    interval: str  # "month" | "year"
 
 
 class LoginReq(BaseModel):
@@ -856,13 +862,36 @@ class DraftReq(BaseModel):
 
 
 def _handle_tier(h: str) -> str:
-    """Return 'free' | 'premium' | 'unavailable' based on length."""
+    """Return 'free' | 'plus' | 'pro' | 'unavailable' based on length.
+    - 1-3 chars: unavailable (no one can claim)
+    - 4    chars: requires Pro tier
+    - 5    chars: requires Plus tier (or higher)
+    - 6-26 chars: free for everyone
+    """
     n = len(h)
     if n < HANDLE_HARD_MIN:
         return "unavailable"
-    if n < HANDLE_FREE_MIN:
-        return "premium"
+    if n == 4:
+        return "pro"
+    if n == 5:
+        return "plus"
     return "free"
+
+
+def _user_tier(user: dict) -> str:
+    """Return active tier for a user — 'pro' / 'plus' / 'free'. Expiry-aware."""
+    t = (user or {}).get("tier", "free")
+    if t == "free":
+        return "free"
+    exp = _parse_dt((user or {}).get("tier_expires_at"))
+    if exp and exp <= _utcnow():
+        return "free"
+    return t
+
+
+def _tier_meets(required: str, current: str) -> bool:
+    rank = {"free": 0, "plus": 1, "pro": 2}
+    return rank.get(current, 0) >= rank.get(required, 0)
 
 
 def _validate_handle(h: str, allow_premium: bool = False) -> str:
@@ -907,8 +936,156 @@ async def check_handle(handle: str, authorization: Optional[str] = Header(None))
         "tier": tier,
         "handle": h,
         "address": f"{h}@{MAIL_DOMAIN}",
-        "requires_premium": tier == "premium",
+        "requires_premium": tier in ("plus", "pro"),
     }
+
+
+# ============================== BILLING ==============================
+
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
+
+# Plans: amount in USD, days of access granted per purchase
+PLAN_CATALOG = {
+    ("plus", "month"): {"amount": 4.99, "days": 30, "tier": "plus", "label": "W Plus · Monthly"},
+    ("plus", "year"):  {"amount": 49.00, "days": 365, "tier": "plus", "label": "W Plus · Yearly"},
+    ("pro",  "month"): {"amount": 9.99, "days": 30, "tier": "pro", "label": "W Pro · Monthly"},
+    ("pro",  "year"):  {"amount": 99.00, "days": 365, "tier": "pro", "label": "W Pro · Yearly"},
+}
+TIER_STORAGE_GB = {"free": 1, "plus": 50, "pro": 100}
+
+
+def _stripe_client(webhook_url: Optional[str] = None) -> StripeCheckout:
+    if not STRIPE_API_KEY:
+        raise HTTPException(503, "Billing is not configured yet.")
+    return StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+
+
+@api_router.get("/billing/plans")
+async def billing_plans():
+    return {
+        "currency": "usd",
+        "plans": [
+            {"tier": "free", "label": "Free", "monthly": 0, "yearly": 0,
+             "storage_gb": TIER_STORAGE_GB["free"],
+             "perks": ["1 GB storage", "Custom @w.xyz address", "6+ character handles"]},
+            {"tier": "plus", "label": "Plus",
+             "monthly": PLAN_CATALOG[("plus", "month")]["amount"],
+             "yearly":  PLAN_CATALOG[("plus", "year")]["amount"],
+             "storage_gb": TIER_STORAGE_GB["plus"],
+             "perks": ["50 GB storage", "5-character handles", "Blue check \u2713", "Priority support"]},
+            {"tier": "pro", "label": "Pro",
+             "monthly": PLAN_CATALOG[("pro", "month")]["amount"],
+             "yearly":  PLAN_CATALOG[("pro", "year")]["amount"],
+             "storage_gb": TIER_STORAGE_GB["pro"],
+             "perks": ["100 GB storage", "4 & 5-character handles", "Blue check \u2713", "Priority support"]},
+        ],
+    }
+
+
+@api_router.get("/billing/me")
+async def billing_me(user=Depends(get_current_user)):
+    tier = _user_tier(user)
+    return {
+        "tier": tier,
+        "tier_label": tier.capitalize(),
+        "tier_expires_at": user.get("tier_expires_at"),
+        "storage_gb": TIER_STORAGE_GB.get(tier, 1),
+        "has_blue_check": tier in ("plus", "pro"),
+    }
+
+
+@api_router.post("/billing/checkout")
+async def billing_checkout(req: CheckoutReq, request: Request, user=Depends(get_current_user)):
+    key = (req.tier, req.interval)
+    if key not in PLAN_CATALOG:
+        raise HTTPException(400, "Invalid plan selection.")
+    plan = PLAN_CATALOG[key]
+    origin = request.headers.get("origin") or os.environ.get("APP_PUBLIC_URL", "").rstrip("/")
+    if not origin:
+        raise HTTPException(500, "APP_PUBLIC_URL not configured.")
+    success_url = f"{origin}/billing/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/billing/cancel"
+    webhook_url = f"{origin}/api/billing/webhook"
+
+    sc = _stripe_client(webhook_url=webhook_url)
+    csr = CheckoutSessionRequest(
+        amount=plan["amount"], currency="usd",
+        success_url=success_url, cancel_url=cancel_url,
+        metadata={"user_id": user["id"], "tier": plan["tier"],
+                  "interval": req.interval, "days": str(plan["days"])},
+    )
+    session = await sc.create_checkout_session(csr)
+    await db.payments.insert_one({
+        "id": str(uuid.uuid4()), "session_id": session.session_id,
+        "user_id": user["id"], "tier": plan["tier"], "interval": req.interval,
+        "days": plan["days"], "amount": plan["amount"], "currency": "usd",
+        "status": "pending", "created_at": now_iso(), "label": plan["label"],
+    })
+    return {"url": session.url, "session_id": session.session_id}
+
+
+async def _apply_payment_success(session_id: str) -> dict:
+    payment = await db.payments.find_one({"session_id": session_id}, {"_id": 0})
+    if not payment:
+        return {"applied": False}
+    if payment.get("status") == "paid":
+        return {"applied": False, "duplicate": True}
+    user = await db.users.find_one({"id": payment["user_id"]}, {"_id": 0})
+    if not user:
+        return {"applied": False}
+    now = _utcnow()
+    current_exp = _parse_dt(user.get("tier_expires_at"))
+    current_tier = _user_tier(user)
+    base = current_exp if (current_exp and current_exp > now and current_tier == payment["tier"]) else now
+    new_exp = base + timedelta(days=int(payment["days"]))
+    await db.users.update_one({"id": user["id"]}, {"$set": {
+        "tier": payment["tier"],
+        "tier_expires_at": new_exp.isoformat(),
+        "tier_updated_at": now.isoformat(),
+        "last_payment_session": session_id,
+    }})
+    await db.payments.update_one({"session_id": session_id},
+                                  {"$set": {"status": "paid", "paid_at": now.isoformat()}})
+    logger.info(f"Billing: user={user['id']} upgraded to {payment['tier']} until {new_exp.isoformat()}")
+    return {"applied": True, "tier": payment["tier"], "expires_at": new_exp.isoformat()}
+
+
+@api_router.get("/billing/status/{session_id}")
+async def billing_status(session_id: str, user=Depends(get_current_user)):
+    payment = await db.payments.find_one({"session_id": session_id}, {"_id": 0})
+    if not payment or payment.get("user_id") != user["id"]:
+        raise HTTPException(404, "Session not found.")
+    if payment.get("status") == "paid":
+        return {"status": "paid", "tier": payment["tier"]}
+    try:
+        sc = _stripe_client()
+        s = await sc.get_checkout_status(session_id)
+        if s.payment_status == "paid":
+            await _apply_payment_success(session_id)
+            return {"status": "paid", "tier": payment["tier"]}
+        return {"status": s.payment_status or s.status or "pending"}
+    except Exception as e:
+        logger.warning(f"billing/status reconcile error: {e}")
+        return {"status": "pending"}
+
+
+@api_router.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature")
+    try:
+        sc = _stripe_client()
+        evt = await sc.handle_webhook(payload, signature=sig)
+    except Exception as e:
+        logger.warning(f"Webhook verify failed: {e}")
+        raise HTTPException(400, "Invalid webhook")
+    try:
+        await db.billing_events.insert_one({"id": evt.event_id, "type": evt.event_type, "at": now_iso()})
+    except Exception:
+        return {"ok": True, "duplicate": True}
+    if evt.event_type in ("checkout.session.completed", "payment_intent.succeeded") and evt.payment_status == "paid" and evt.session_id:
+        await _apply_payment_success(evt.session_id)
+    return {"ok": True}
 
 
 @api_router.post("/mail/claim-handle")
