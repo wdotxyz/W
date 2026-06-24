@@ -51,10 +51,7 @@ export default function SignInScreen() {
       if (msg.includes("locked") || msg.includes("429")) {
         Alert.alert("Account locked", "Too many failed attempts. Try again in a few minutes or reset your password.");
       } else {
-        Alert.alert(
-          "Sign in failed",
-          `The email or password is incorrect.\n\nTried: ${fullEmail}\n\nTip: enter the full address (e.g. peter@w.xyz) or just your handle — we'll add @w.xyz for you.`,
-        );
+        Alert.alert("Sign in failed", "The email or password is incorrect.");
       }
     } finally {
       setLoading(false);
@@ -90,7 +87,7 @@ export default function SignInScreen() {
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="peter or peter@w.xyz"
+                placeholder="you@w.xyz or yourname@w.xyz"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="email-address"
                 autoCapitalize="none"

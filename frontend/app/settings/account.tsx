@@ -70,6 +70,7 @@ export default function AccountSettingsScreen() {
         <Text style={styles.intro}>Manage security, learn about W, or take a break.</Text>
         <View style={styles.group}>
           <Row icon="shield-checkmark" label="Two-step verification" onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
+          <Row icon="lock-closed" label="Change password" onPress={() => router.push("/settings/change-password")} testID="row-change-password" />
           <Row icon="key" label="Passkeys" onPress={() => router.push("/settings/passkeys")} testID="row-passkeys" />
           <Row icon="call" label="Change phone number" onPress={() => router.push("/settings/change-phone")} testID="row-change-phone" />
           <Row icon="information-circle" label="About W" onPress={() => router.push("/about")} testID="row-about" />
