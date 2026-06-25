@@ -38,10 +38,7 @@ export default function AboutScreen() {
 
         <View style={styles.copyBlock}>
           <Text style={styles.copy}>
-            W is an AI-native messaging and mail platform built around a clean idea: read it, lose it. Your inbox stays light, your conversations stay private, and W AI handles the busywork.
-          </Text>
-          <Text style={styles.copy}>
-            Built with care for people who want a friendlier, smarter way to communicate.
+            W is the AI-native webmail provider, built for whoever and whatever.
           </Text>
         </View>
 
