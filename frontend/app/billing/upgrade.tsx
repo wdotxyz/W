@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   cardHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   planLabel: { fontSize: 20, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
   priceRow: { flexDirection: "row", alignItems: "baseline", marginTop: 4 },
-  priceAmount: { fontSize: 32, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
+  priceAmount: { fontSize: 22, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
   pricePeriod: { color: colors.textMuted, fontSize: 14, marginLeft: 4 },
   perkRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   perkText: { fontSize: 14, color: colors.text },
