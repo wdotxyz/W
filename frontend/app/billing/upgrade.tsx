@@ -149,12 +149,24 @@ export default function UpgradeScreen() {
                   <Text style={styles.pricePeriod}>{interval === "month" ? "/ month" : "/ year"}</Text>
                 )}
               </View>
-              {p.perks.map((perk) => (
-                <View key={perk} style={styles.perkRow}>
-                  <Ionicons name="checkmark" size={16} color={colors.accent} />
-                  <Text style={styles.perkText}>{perk}</Text>
-                </View>
-              ))}
+              {p.perks.map((perk) => {
+                const [perkLabel, perkInfo] = perk.includes("|") ? perk.split("|", 2) : [perk, ""];
+                return (
+                  <View key={perk} style={styles.perkRow}>
+                    <Ionicons name="checkmark" size={16} color={colors.accent} />
+                    <Text style={styles.perkText}>{perkLabel}</Text>
+                    {perkInfo ? (
+                      <TouchableOpacity
+                        onPress={() => Alert.alert(perkLabel, perkInfo)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        testID={`perk-info-${perkLabel}`}
+                      >
+                        <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                );
+              })}
               {!isFree && (
                 <TouchableOpacity
                   onPress={() => onChoose(p.tier as "plus" | "pro")}
@@ -217,8 +229,8 @@ const styles = StyleSheet.create({
   cardHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   planLabel: { fontSize: 20, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
   priceRow: { flexDirection: "row", alignItems: "baseline", marginTop: 4 },
-  priceAmount: { fontSize: 22, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
-  pricePeriod: { color: colors.textMuted, fontSize: 14, marginLeft: 4 },
+  priceAmount: { fontSize: 17, fontWeight: "700", color: colors.text, letterSpacing: -0.2 },
+  pricePeriod: { color: colors.textMuted, fontSize: 11.5, fontWeight: "600", marginLeft: 4 },
   perkRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   perkText: { fontSize: 14, color: colors.text },
 
