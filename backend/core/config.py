@@ -50,6 +50,10 @@ PLAN_CATALOG = {
 }
 TIER_STORAGE_GB = {'free': 1, 'plus': 50, 'pro': 100}
 
+# MVP-wide hard storage cap per user (regardless of tier). Override / remove
+# this once paid plans are launched and per-tier limits resume.
+MVP_STORAGE_BYTES = 10 * 1024 * 1024  # 10 MB per user during MVP
+
 # ----- Blocklists -----
 RESERVED_HANDLES = {
     # System / role accounts

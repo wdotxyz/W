@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from core.config import (
     HANDLE_HARD_MIN, HANDLE_MAX, MAIL_DOMAIN,
-    RESERVED_HANDLES, PROFANITY_FRAGMENTS, TIER_STORAGE_GB,
+    RESERVED_HANDLES, PROFANITY_FRAGMENTS, TIER_STORAGE_GB, MVP_STORAGE_BYTES,
 )
 from core.db import db
 from core.security import _parse_dt, _utcnow
@@ -83,6 +83,12 @@ def _validate_handle(h: str, allow_premium: bool = False) -> str:
 
 # -------------------- Storage --------------------
 def _storage_limit_bytes(user: dict) -> int:
+    # MVP-wide flat cap; restore per-tier limits once paid plans launch.
+    return MVP_STORAGE_BYTES
+
+
+def _storage_limit_bytes_by_tier(user: dict) -> int:
+    """Per-tier storage limit (used only when paid plans are live)."""
     return TIER_STORAGE_GB.get(_user_tier(user), 1) * 1024 * 1024 * 1024
 
 
@@ -99,12 +105,11 @@ async def _check_and_bump_storage(user: dict, added_bytes: int) -> None:
     limit = _storage_limit_bytes(user)
     used = int(user.get('storage_used_bytes', 0) or 0)
     if used + added_bytes > limit:
-        used_gb = used / (1024 ** 3)
-        limit_gb = limit / (1024 ** 3)
-        tier = _user_tier(user)
+        used_mb = used / (1024 * 1024)
+        limit_mb = limit / (1024 * 1024)
         raise HTTPException(
             413,
-            f"Storage full — {used_gb:.2f} GB of {limit_gb:.0f} GB on the {tier.capitalize()} plan. Upgrade to keep uploading.",
+            f"Storage full — {used_mb:.1f} MB of {limit_mb:.0f} MB used. Star important emails and close threads to free space.",
         )
     await db.users.update_one({'id': user['id']}, {'$inc': {'storage_used_bytes': added_bytes}})
 

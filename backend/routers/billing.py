@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from emergentintegrations.payments.stripe.checkout import CheckoutSessionRequest
 
-from core.config import PLAN_CATALOG, TIER_STORAGE_GB
+from core.config import PLAN_CATALOG, TIER_STORAGE_GB, MVP_STORAGE_BYTES
 from core.db import db, logger
 from core.security import get_current_user, now_iso
 from models.schemas import CheckoutReq
@@ -24,7 +24,7 @@ async def billing_plans():
              'storage_gb': TIER_STORAGE_GB['free'],
              'perks': [
                  'Premium @w.xyz address',
-                 '1 GB storage',
+                 '10 MB storage',
                  'Custom Email Addresses Using Your Own Domains',
                  'Ghost mail|For privacy reasons, all incoming and outgoing emails are deleted as soon as you close it out. Unless they are starred, that is.',
              ]},
@@ -57,12 +57,14 @@ async def billing_plans():
 async def billing_me(user=Depends(get_current_user)):
     tier = _user_tier(user)
     used = int(user.get('storage_used_bytes', 0) or 0)
-    limit = TIER_STORAGE_GB.get(tier, 1) * 1024 * 1024 * 1024
+    # MVP-wide flat cap; restore per-tier limit (TIER_STORAGE_GB) once paid plans launch.
+    limit = MVP_STORAGE_BYTES
     return {
         'tier': tier,
         'tier_label': tier.capitalize(),
         'tier_expires_at': user.get('tier_expires_at'),
-        'storage_gb': TIER_STORAGE_GB.get(tier, 1),
+        'storage_gb': round(limit / (1024 ** 3), 4),
+        'storage_mb': round(limit / (1024 * 1024)),
         'storage_used_bytes': used,
         'storage_limit_bytes': limit,
         'storage_percent': round((used / limit) * 100, 1) if limit else 0,

@@ -1,5 +1,6 @@
 """W Mail: handle/domain management, mailbox CRUD, compose, inbound webhook."""
 import base64
+import inspect
 import json
 import re
 import uuid
@@ -347,43 +348,47 @@ async def get_thread(thread_id: str, user=Depends(get_current_user)):
 
 @router.post('/mail/thread/{thread_id}/star')
 async def star_thread(thread_id: str, user=Depends(get_current_user)):
-    """Save the entire thread permanently (Ghost Mail won't delete it on close)."""
-    addrs = _addrs_for(user)
-    q = {'thread_id': thread_id, 'folder': 'inbox', 'to_addrs': {'$in': addrs or [None]}}
+    """Save the entire thread permanently (Ghost Mail won't delete it on close).
+    Applies to both incoming and outgoing messages in the thread."""
+    q = {'thread_id': thread_id, 'owner_id': user['id']}
     res = await db.emails.update_many(q, {'$set': {'starred': True, 'starred_at': now_iso()}})
     return {'starred': True, 'matched': res.modified_count}
 
 
 @router.post('/mail/thread/{thread_id}/unstar')
 async def unstar_thread(thread_id: str, user=Depends(get_current_user)):
-    addrs = _addrs_for(user)
-    q = {'thread_id': thread_id, 'folder': 'inbox', 'to_addrs': {'$in': addrs or [None]}}
+    q = {'thread_id': thread_id, 'owner_id': user['id']}
     res = await db.emails.update_many(q, {'$set': {'starred': False}, '$unset': {'starred_at': ''}})
     return {'starred': False, 'matched': res.modified_count}
 
 
 @router.post('/mail/thread/{thread_id}/close')
 async def close_thread(thread_id: str, user=Depends(get_current_user)):
-    """Called when the user navigates away. Ghost-deletes unstarred inbox messages
-    that were already opened, IF the user has ghost_mail enabled."""
+    """Called when the user navigates away. Ghost-deletes every unstarred,
+    unarchived, non-snoozed email in the thread that the user owns — covering
+    both incoming (inbox, opened) and outgoing (sent) messages."""
     if not user.get('ghost_mail_enabled', True):
         return {'deleted': 0, 'ghost_mail': False}
-    addrs = _addrs_for(user)
     now_s = now_iso()
     q = {
         'thread_id': thread_id,
-        'folder': 'inbox',
-        'to_addrs': {'$in': addrs or [None]},
+        'owner_id': user['id'],
         'starred': {'$ne': True},
         'archived': {'$ne': True},
-        'opened_at': {'$exists': True, '$ne': None},
-        '$or': [
-            {'snoozed_until': {'$exists': False}},
-            {'snoozed_until': None},
-            {'snoozed_until': {'$lte': now_s}},
+        '$and': [
+            {'$or': [
+                {'snoozed_until': {'$exists': False}},
+                {'snoozed_until': None},
+                {'snoozed_until': {'$lte': now_s}},
+            ]},
+            # Eligible folders: sent (auto-counts as opened) OR inbox that was actually opened.
+            {'$or': [
+                {'folder': 'sent'},
+                {'folder': 'inbox', 'opened_at': {'$exists': True, '$ne': None}},
+            ]},
         ],
     }
-    victims = await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(200)
+    victims = await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(500)
     if not victims:
         return {'deleted': 0, 'ghost_mail': True}
     ids = [v['id'] for v in victims]
@@ -593,7 +598,11 @@ async def mail_inbound(request: Request):
     for i in range(1, n + 1):
         f = form.get(f'attachment{i}')
         if f and hasattr(f, 'read'):
-            data = await f.read() if hasattr(f.read, '__await__') else f.read()
+            raw = f.read()
+            if inspect.isawaitable(raw):
+                data = await raw
+            else:
+                data = raw
             try:
                 b64 = base64.b64encode(data).decode('ascii')
             except Exception:
