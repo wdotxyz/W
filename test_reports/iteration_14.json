@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 14 verified the sign-in glitch bug fix end-to-end plus all called-out regressions. Backend pytest 9/9 PASSED (test_iter14_verification.py): login peter@w.xyz/PeterW2026! → 200; wrong password → 401; /api/billing/me returns storage_mb=10 and storage_limit_bytes=10485760; /api/billing/plans free.perks contains '10 MB storage' (and contains no '1 GB storage'); /api/billing/plans still has exactly one 'Ghost mail|...' info perk on the FREE plan; POST /api/mail/inbound (multipart, both no-attachment and with-attachment) returns 200 (regression of the prior 500 caused by inverted-await on UploadFile.read); /api/support/contact → 200; /api/auth/me → 200. Frontend Playwright 13/13 PASSED (after one expo restart to invalidate a stale bundle for welcome.tsx): (a) Logged-out visit to /(tabs)/settings redirects to /signin (NOT /welcome). (b) Wrong password on /signin keeps user on /signin (no redirect loop). (c) Correct sign-in lands on /(tabs)/updates. (d) Sign-in → tap signout-btn → user lands back on /signin → re-sign-in returns to /(tabs)/updates (no flicker, no loop). (e) /(auth)/welcome shows BOTH testID welcome-get-started-btn AND welcome-signin-link with copy 'Already have an account? Sign in'; tapping the link navigates to /signin where signin-email-input, signin-password-input and signin-continue-btn are all rendered. (f) /billing/upgrade renders the testID premium-coming-soon placeholder with 'Premium is on the way' copy (SHOW_PREMIUM=false). (g) /(tabs)/settings shows the expected 7 rows (Notifications, AI Assistant, Theme, Help & Support, Mail, Account, Sign out) with row-premium HIDDEN. (h) /settings/account still has row-change-password and tapping it opens /settings/change-password with cp-current/cp-new/cp-confirm. (i) /help still renders the FAQ accordion. Seed credential peter@w.xyz/PeterW2026! intact at end of run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "global", "issue": "RN-Web console deprecation warning carried over from prior iterations: 'shadow*' style props are deprecated, use 'boxShadow'. Non-blocking. Reference: many StyleSheet entries (e.g. /app/frontend/app/(auth)/welcome.tsx:73,88, /app/frontend/app/(auth)/signin.tsx:206, /app/frontend/app/billing/upgrade.tsx:282)."},
+      {"component": "global", "issue": "RN-Web console deprecation warning carried over: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_verification.py",
+    "/app/test_reports/pytest/iter14_results.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have, carried over) Migrate deprecated RN-Web `shadow*` style props to `boxShadow` and `props.pointerEvents` to `style.pointerEvents` across the codebase.",
+    "(Nice-to-have, carried over from iter 13) Add a testID to the 'Theme' row in /app/frontend/app/(tabs)/settings.tsx (currently identified via text match only)."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/(tabs)/_layout.tsx:12-13 — signed-out users are now redirected to /(auth)/signin (not /welcome). Correct fix for the reported glitch.",
+    "/app/frontend/app/(auth)/welcome.tsx:40-49 — new TouchableOpacity 'welcome-signin-link' routes to /(auth)/signin and renders 'Already have an account? Sign in'. Both CTAs co-exist as a ctaGroup with 12px gap (looks good on 390x844).",
+    "/app/frontend/app/(tabs)/settings.tsx:15-18 — onSignOut already calls router.replace('/(auth)/signin') after signOut(); the tabs layout effect is now a safety net rather than the only path, so no duplicate-replace race observed.",
+    "/app/backend/routers/mail.py:600-605 — UploadFile.read() result is now properly awaited via inspect.isawaitable; verified via multipart POST with/without attachment both returning 200.",
+    "/app/backend/routers/billing.py:27,61-69 — free.perks[1] is '10 MB storage' and /billing/me reports storage_mb=10, storage_limit_bytes=10485760 from MVP_STORAGE_BYTES (core/config.py:55). MVP-wide cap correctly applied across all tiers."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_verification.py (new)",
+    "/app/test_reports/pytest/iter14_results.xml (new)",
+    "/app/test_reports/iteration_14.json (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (13/13)"},
+  "seed_data_creation": "No seed data created. Login peter@w.xyz/PeterW2026! verified 200 multiple times. A few transient TEST_inbound_* messages were inserted by the inbound webhook test and cleaned up by the autouse fixture (best-effort DELETE /api/mail/{id}).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sign-in glitch is fully fixed and verified. Important behaviour to preserve: (1) /(tabs)/_layout.tsx redirects signed-out users to /(auth)/signin (not /welcome). (2) Welcome screen has TWO CTAs: testIDs welcome-get-started-btn (→ /(auth)/phone for new signup) and welcome-signin-link (→ /(auth)/signin for returning users). (3) Sign-out flow in settings.tsx explicitly router.replace('/(auth)/signin') after auth.signOut(). (4) /api/mail/inbound MUST use inspect.isawaitable(raw) (not hasattr(f.read, '__await__')); regressing this returns 500. (5) MVP cap lives in /app/backend/core/config.py:55 as MVP_STORAGE_BYTES = 10*1024*1024; /billing/me uses this as `limit` for all tiers. (6) SHOW_PREMIUM flag in /app/frontend/src/featureFlags.ts controls /billing/upgrade placeholder AND hides row-premium in (tabs)/settings.tsx. NOTE: After editing files under /(auth)/, a `sudo supervisorctl restart expo` may be needed to invalidate the metro cache — saw one stale render of welcome.tsx without the sign-in link until expo restarted (CI=true mode disables watch). Use /app/backend/tests/test_iter14_verification.py for future regressions on storage/Ghost-mail-perks/inbound webhook.",
+  "rca_of_issue": "ORIGINAL BUG RCA (already fixed by main agent, now verified): After a user tapped Sign out on the Settings tab, the tabs layout effect ran (user=null) and replaced the route with /(auth)/welcome. The welcome screen's only CTA, 'Get started', pushed to /(auth)/phone (the SIGN-UP funnel) — there was no visible path to /(auth)/signin for a returning user, so the user was visually 'trapped in the sign-up funnel' and reported it as 'sign in page keeps glitching'. FIX VERIFIED: (1) /(tabs)/_layout.tsx now does router.replace('/(auth)/signin') when !user. (2) /(auth)/welcome.tsx now renders a second TouchableOpacity (testID 'welcome-signin-link') below Get started that routes to /(auth)/signin. Sign-in → Sign-out → Sign-in cycle reproduced 2x with zero flicker and zero redirect loop."
+}

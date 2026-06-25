@@ -27,15 +27,27 @@ export default function Welcome() {
           <Bullet icon="mic" text="Voice notes, photos & groups" />
         </View>
 
-        <TouchableOpacity
-          style={styles.cta}
-          onPress={() => router.push("/(auth)/phone")}
-          testID="welcome-get-started-btn"
-          activeOpacity={0.85}
-        >
-          <Text style={styles.ctaText}>Get started</Text>
-          <Ionicons name="arrow-forward" size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.ctaGroup}>
+          <TouchableOpacity
+            style={styles.cta}
+            onPress={() => router.push("/(auth)/phone")}
+            testID="welcome-get-started-btn"
+            activeOpacity={0.85}
+          >
+            <Text style={styles.ctaText}>Get started</Text>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/(auth)/signin")}
+            testID="welcome-signin-link"
+            activeOpacity={0.7}
+            style={styles.signInLink}
+          >
+            <Text style={styles.signInText}>
+              Already have an account? <Text style={styles.signInBold}>Sign in</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.legal}>By continuing you agree to W Platforms Terms & Privacy.</Text>
       </View>
     </ImageBackground>
@@ -69,11 +81,15 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   bulletText: { fontSize: 16, color: colors.text, fontWeight: "500" },
+  ctaGroup: { gap: 12 },
   cta: {
     flexDirection: "row", backgroundColor: colors.primary, padding: 18, borderRadius: radius.xl,
     alignItems: "center", justifyContent: "center", gap: 10,
     shadowColor: colors.primary, shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 5,
   },
   ctaText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  signInLink: { alignItems: "center", padding: 8 },
+  signInText: { color: colors.textMuted, fontSize: 14 },
+  signInBold: { color: colors.primary, fontWeight: "700" },
   legal: { textAlign: "center", color: colors.textMuted, fontSize: 12, marginTop: 14 },
 });
