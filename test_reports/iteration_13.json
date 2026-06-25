@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 13 verified bug fix end-to-end. Backend GET /api/billing/plans returns Ghost mail perk EXACTLY as 'Ghost mail|For privacy reasons, all incoming and outgoing emails are deleted as soon as you close it out. Unless they are starred, that is.' and it is the ONLY perk in the entire catalog with an |info marker (regression sweep across free/plus/pro confirms 1/1). Frontend /billing/upgrade now renders the info icon next to the 'Ghost mail' label (testID 'perk-info-Ghost mail', initial render visible). Tapping the icon opens an inline tooltip BELOW the perk row (testID 'perk-tip-Ghost mail') containing the new short copy verbatim. Tapping the icon again closes it; tapping the tooltip body also closes it. The Ionicon `name` flips between 'information-circle-outline' (closed) and 'information-circle' (open) — verified by capturing innerHTML of the icon before/after the tap and confirming the rendered glyph differs. None of the other Essentials perks (Premium @w.xyz address, 1 GB storage, Custom Email Addresses Using Your Own Domains) nor any Plus/Pro perk render an info icon (only-one-info-icon-on-page assertion passes). Title still 'W for Way more', no niche subtitle, 'Always Free' rendered on the Essentials card. Regressions: login peter@w.xyz / PeterW2026! still 200; /(tabs)/settings still shows the expected rows (row-premium, row-notifications, row-ai-assistant, row-help, row-mail-section, row-account-section, signout-btn) plus the testID-less Theme row; /settings/account still has row-change-password; /help still renders FAQ + contact form; /actions header still 'AI Assistant'; /about tagline still italic + centered. Backend pytest: 6/6 PASSED. Frontend Playwright bug-fix assertions: 21/21 PASSED. Regression assertions: 7/7 PASSED. Seed credential PeterW2026! intact.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "global", "issue": "RN-Web console floods with deprecation warnings: 'shadow*' style props are deprecated, use 'boxShadow' — non-blocking, carried from iter 11/12. Reference: many files."},
+      {"component": "global", "issue": "RN-Web warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — non-blocking, carried over."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_verification.py",
+    "/app/test_reports/pytest/iter13_results.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have, carried over) Migrate deprecated RN-Web `shadow*` style props to `boxShadow` and `props.pointerEvents` to `style.pointerEvents`.",
+    "(Nice-to-have, carried over) Add a testID to the 'Theme' row in /app/frontend/app/(tabs)/settings.tsx."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routers/billing.py:29 — free.perks[3] holds the new Ghost mail copy character-for-character (verified by exact string match in pytest).",
+    "/app/frontend/app/billing/upgrade.tsx:154-188 — perk renderer splits on '|', and only renders the TouchableOpacity info icon and tooltip when perkInfo is non-empty, so other perks naturally render as plain rows.",
+    "/app/frontend/app/billing/upgrade.tsx:30,164,178 — `openTip` is a single-string state, so opening one tooltip implicitly closes any other (good UX). Tap-to-toggle works on both icon and tooltip body via the same setOpenTip(null) handler.",
+    "Icon name correctly switches between 'information-circle' (open) and 'information-circle-outline' (closed) at line 169."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_verification.py (new)",
+    "/app/test_reports/pytest/iter13_results.xml (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No seed data created. Login for peter@w.xyz / PeterW2026! verified 200 at the end of testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Ghost mail info-icon + inline tooltip is live and fully verified. testIDs: perk-info-Ghost mail (icon button), perk-tip-Ghost mail (tooltip body). State is held in `openTip` (useState<string|null>) keyed by `${tier}::${perkLabel}`, so only one tooltip can be open at a time. Tap icon again OR tap tooltip body to close. Only the FREE plan's Ghost mail perk contains the '|info' marker — all other perks render as plain rows. Iter13 backend pytest at /app/backend/tests/test_iter13_verification.py is reusable for future regressions on the billing/plans payload.",
+  "rca_of_issue": "N/A — bug fix already applied by main agent and verified to work."
+}

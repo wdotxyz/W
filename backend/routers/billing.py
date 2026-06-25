@@ -26,7 +26,7 @@ async def billing_plans():
                  'Premium @w.xyz address',
                  '1 GB storage',
                  'Custom Email Addresses Using Your Own Domains',
-                 'Ghost mail|Ghost mail makes emails self-destruct as soon as you finish reading them — like Snapchat for your inbox. Conversations stay private and your inbox stays light. Plus & Pro plans let you save the ones you want to keep before they vanish.',
+                 'Ghost mail|For privacy reasons, all incoming and outgoing emails are deleted as soon as you close it out. Unless they are starred, that is.',
              ]},
             {'tier': 'plus', 'label': 'Plus',
              'monthly': PLAN_CATALOG[('plus', 'month')]['amount'],

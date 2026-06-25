@@ -27,6 +27,7 @@ export default function UpgradeScreen() {
   const [billing, setBilling] = useState<any>(null);
   const [interval, setInterval] = useState<"month" | "year">("month");
   const [busy, setBusy] = useState<string | null>(null);
+  const [openTip, setOpenTip] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -151,17 +152,35 @@ export default function UpgradeScreen() {
               </View>
               {p.perks.map((perk) => {
                 const [perkLabel, perkInfo] = perk.includes("|") ? perk.split("|", 2) : [perk, ""];
+                const tipKey = `${p.tier}::${perkLabel}`;
+                const tipOpen = openTip === tipKey;
                 return (
-                  <View key={perk} style={styles.perkRow}>
-                    <Ionicons name="checkmark" size={16} color={colors.accent} />
-                    <Text style={styles.perkText}>{perkLabel}</Text>
-                    {perkInfo ? (
+                  <View key={perk} style={styles.perkWrap}>
+                    <View style={styles.perkRow}>
+                      <Ionicons name="checkmark" size={16} color={colors.accent} />
+                      <Text style={styles.perkText}>{perkLabel}</Text>
+                      {perkInfo ? (
+                        <TouchableOpacity
+                          onPress={() => setOpenTip(tipOpen ? null : tipKey)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          testID={`perk-info-${perkLabel}`}
+                        >
+                          <Ionicons
+                            name={tipOpen ? "information-circle" : "information-circle-outline"}
+                            size={16}
+                            color={tipOpen ? colors.accent : colors.textMuted}
+                          />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {tipOpen && perkInfo ? (
                       <TouchableOpacity
-                        onPress={() => Alert.alert(perkLabel, perkInfo)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        testID={`perk-info-${perkLabel}`}
+                        onPress={() => setOpenTip(null)}
+                        activeOpacity={0.95}
+                        style={styles.tooltip}
+                        testID={`perk-tip-${perkLabel}`}
                       >
-                        <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
+                        <Text style={styles.tooltipText}>{perkInfo}</Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>
@@ -232,7 +251,18 @@ const styles = StyleSheet.create({
   priceAmount: { fontSize: 17, fontWeight: "700", color: colors.text, letterSpacing: -0.2 },
   pricePeriod: { color: colors.textMuted, fontSize: 11.5, fontWeight: "600", marginLeft: 4 },
   perkRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
+  perkWrap: {},
   perkText: { fontSize: 14, color: colors.text },
+  tooltip: {
+    marginTop: 6,
+    marginLeft: 24,
+    padding: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tooltipText: { fontSize: 12.5, color: colors.textMuted, lineHeight: 18 },
 
   cta: { marginTop: 16, paddingVertical: 12, borderRadius: radius.xl, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2 },
   ctaPrimary: { backgroundColor: colors.accent },
