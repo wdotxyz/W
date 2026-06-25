@@ -10,6 +10,7 @@ import * as WebBrowser from "expo-web-browser";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
+import { SHOW_PREMIUM } from "../../src/featureFlags";
 
 type Plan = {
   tier: "free" | "plus" | "pro";
@@ -20,7 +21,52 @@ type Plan = {
   perks: string[];
 };
 
+function PremiumComingSoon() {
+  const router = useRouter();
+  return (
+    <SafeAreaView style={comingSoonStyles.safe} edges={["top", "bottom"]}>
+      <View style={comingSoonStyles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={comingSoonStyles.iconBtn} testID="premium-back">
+          <Ionicons name="chevron-back" size={26} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={comingSoonStyles.title}>W Premium</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      <View style={comingSoonStyles.body} testID="premium-coming-soon">
+        <View style={comingSoonStyles.iconWrap}><Ionicons name="star" size={36} color={colors.accent} /></View>
+        <Text style={comingSoonStyles.heroTitle}>Premium is on the way</Text>
+        <Text style={comingSoonStyles.heroSub}>
+          We&apos;re polishing the experience before opening up paid plans. Stay tuned — everything you love about W is fully free during the MVP.
+        </Text>
+        <TouchableOpacity onPress={() => router.back()} style={comingSoonStyles.cta} activeOpacity={0.85}>
+          <Text style={comingSoonStyles.ctaText}>Got it</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const comingSoonStyles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.surface },
+  header: { flexDirection: "row", alignItems: "center", padding: space.md, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  title: { flex: 1, fontSize: 18, fontWeight: "800", color: colors.text },
+  body: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 },
+  iconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
+  heroTitle: { fontSize: 22, fontWeight: "800", color: colors.text, textAlign: "center", letterSpacing: -0.3 },
+  heroSub: { fontSize: 14.5, color: colors.textMuted, textAlign: "center", lineHeight: 21 },
+  cta: { backgroundColor: colors.primary, borderRadius: radius.xl, paddingVertical: 14, paddingHorizontal: 32, marginTop: 12 },
+  ctaText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+});
+
 export default function UpgradeScreen() {
+  if (!SHOW_PREMIUM) {
+    return <PremiumComingSoon />;
+  }
+  return <UpgradeScreenInner />;
+}
+
+function UpgradeScreenInner() {
   const router = useRouter();
   const { user } = useAuth();
   const [plans, setPlans] = useState<Plan[] | null>(null);

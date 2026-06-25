@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, radius, space } from "../src/theme";
+import { SHOW_PREMIUM } from "../src/featureFlags";
 
 type GhostMail = { enabled: boolean; can_disable: boolean; tier: string };
 
@@ -28,7 +29,7 @@ export default function GhostMailScreen() {
 
   const toggle = async (next: boolean) => {
     if (!state) return;
-    if (!next && !state.can_disable) {
+    if (!next && !state.can_disable && SHOW_PREMIUM) {
       Alert.alert("Plus or Pro required", "Disabling Ghost Mail is a premium feature. Upgrade to keep every email forever.", [
         { text: "Cancel", style: "cancel" },
         { text: "Upgrade", onPress: () => router.push("/billing/upgrade") },
@@ -92,7 +93,7 @@ export default function GhostMailScreen() {
           )}
         </View>
 
-        {!state.can_disable && (
+        {SHOW_PREMIUM && !state.can_disable && (
           <View style={styles.lockCard} testID="ghost-lock-card">
             <Ionicons name="lock-closed" size={18} color={colors.primary} />
             <Text style={styles.lockText}>

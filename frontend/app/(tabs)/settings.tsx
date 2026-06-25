@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../src/auth";
 import { Avatar } from "./chats";
 import { colors, radius, space } from "../../src/theme";
+import { SHOW_PREMIUM } from "../../src/featureFlags";
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
@@ -34,8 +35,10 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.group}>
-          <Row icon="star" label="W Premium" onPress={() => router.push("/billing/upgrade")} testID="row-premium" />
-          {user?.custom_domain ? (
+          {SHOW_PREMIUM ? (
+            <Row icon="star" label="W Premium" onPress={() => router.push("/billing/upgrade")} testID="row-premium" />
+          ) : null}
+          {SHOW_PREMIUM && user?.custom_domain ? (
             <Row icon="globe" label="Custom domain" onPress={() => router.push("/domain-setup")} testID="row-domain" />
           ) : null}
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />

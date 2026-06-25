@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { colors, radius, space } from "../src/theme";
+import { SHOW_PREMIUM } from "../src/featureFlags";
 
 type AutoReply = {
   enabled: boolean;
@@ -48,7 +49,7 @@ export default function AutoReplyScreen() {
     })();
   }, []);
 
-  const canUseAi = tier === "plus" || tier === "pro";
+  const canUseAi = !SHOW_PREMIUM || tier === "plus" || tier === "pro";
 
   const onSave = async () => {
     if (enabled && !aiEnabled && !body.trim()) { Alert.alert("Add a reply message or enable Smart Auto-Reply."); return; }
