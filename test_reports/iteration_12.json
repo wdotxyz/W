@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 12 verified end-to-end: (a) sign-in email placeholder is EXACTLY 'you@w.xyz' (the old 'you@w.xyz or yourname@w.xyz' text is gone); (b) login with peter@w.xyz / PeterW2026! still 200 and lands on /(tabs)/updates (Watch tab); (c) GET /api/billing/plans returns the exact perks for free=Essentials (4 perks), plus=Plus (6 perks) and pro=Pro (3 perks) — pytest assertion is whole-list equality, not substring; (d) /billing/upgrade title shows 'W for Way more' (no 'Unlock more of W'), the niche subtitle is gone, three cards render in order Essentials → Plus (POPULAR) → Pro with all the new perks visible and 'Always Free' on the free card; (e) Settings tab still renders 8 rows (W Premium, Notifications, AI Assistant, Theme, Help & Support, Mail, Account, Sign out) with right-aligned chevrons; (f) /settings/account still has row-change-password; (g) /help still renders 8-item FAQ accordion and POST /api/support/contact returns 200. Note: After main agent's edits, Expo's metro bundle was serving the OLD placeholder text — a single `sudo supervisorctl restart expo` cleared the cache and the new placeholder appeared. 3/3 backend pytest cases passed; all critical frontend flows verified via Playwright on 375x667 mobile viewport. Seed credential PeterW2026! intact at end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "global", "issue": "RN-Web console floods with deprecation warnings: 'shadow*' style props are deprecated, use 'boxShadow'. Reference: many files (e.g. /app/frontend/app/(auth)/signin.tsx:206, /app/frontend/app/billing/upgrade.tsx:205). Non-blocking."},
+      {"component": "global", "issue": "RN-Web warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Affects multiple screens. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_verification.py",
+    "/app/test_reports/pytest/iter12_results.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have, carried over from iter 11) Migrate deprecated RN-Web `shadow*` style props to `boxShadow` and `props.pointerEvents` to `style.pointerEvents` to silence console warnings.",
+    "(Nice-to-have) Add a testID to the 'Theme' row in /app/frontend/app/(tabs)/settings.tsx — currently no testID and no onPress.",
+    "(Operational) After in-place text edits, the Expo metro bundle can serve stale strings until `sudo supervisorctl restart expo` is run. Main agent should restart Expo after surface-copy edits so users immediately see the new bundle."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routers/billing.py free/plus/pro perks now match the requested copy character-for-character (verified by exact list equality in pytest).",
+    "/app/frontend/app/billing/upgrade.tsx correctly renders the title 'W for Way more' (line 104), no subtitle, and shows 'Always Free' on the free card via `isFree ? 'Always Free' : ...` (line 147).",
+    "/app/frontend/app/(auth)/signin.tsx placeholder is the single string 'you@w.xyz' (line 90)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter12_verification.py (new)",
+    "/app/test_reports/pytest/iter12_results.xml (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No seed data created. Login for peter@w.xyz / PeterW2026! verified as 200 at the end of testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sign-in placeholder fix and billing perks copy refresh are both live and verified. testIDs of note for billing: upgrade-back-btn, interval-month, interval-year, upgrade-plus-btn, upgrade-pro-btn. testIDs for settings rows: row-premium, row-notifications, row-ai-assistant, row-help, row-mail-section, row-account-section, signout-btn (the 'Theme' row still has no testID — this is a known minor gap). After any surface-copy edit on Expo, the next testing agent should run `sudo supervisorctl restart expo` once before asserting placeholder/text-content via Playwright to avoid hitting a cached bundle.",
+  "rca_of_issue": "N/A — no functional bugs found this iteration. Initial Playwright run saw the OLD placeholder because Expo's metro bundle was cached from before the source edit; restarting expo via supervisor produced the correct new placeholder on the next load."
+}

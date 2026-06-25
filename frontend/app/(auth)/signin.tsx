@@ -87,7 +87,7 @@ export default function SignInScreen() {
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@w.xyz or yourname@w.xyz"
+                placeholder="you@w.xyz"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="email-address"
                 autoCapitalize="none"

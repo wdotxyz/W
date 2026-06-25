@@ -32,12 +32,23 @@ async def billing_plans():
              'monthly': PLAN_CATALOG[('plus', 'month')]['amount'],
              'yearly':  PLAN_CATALOG[('plus', 'year')]['amount'],
              'storage_gb': TIER_STORAGE_GB['plus'],
-             'perks': ['50 GB storage', '5-character handles', 'Blue check ✓', 'Priority support']},
+             'perks': [
+                 'Everything in Essentials',
+                 '50 GB storage',
+                 '5-Character @w.xyz handles available (Optional)',
+                 'Verified blue check',
+                 'AI Assistant',
+                 'Priority Support',
+             ]},
             {'tier': 'pro', 'label': 'Pro',
              'monthly': PLAN_CATALOG[('pro', 'month')]['amount'],
              'yearly':  PLAN_CATALOG[('pro', 'year')]['amount'],
              'storage_gb': TIER_STORAGE_GB['pro'],
-             'perks': ['100 GB storage', '4 & 5-character handles', 'Blue check ✓', 'Priority support']},
+             'perks': [
+                 'Everything in Plus',
+                 '100 GB storage',
+                 '4 & 5-Character @w.xyz handles available (Optional)',
+             ]},
         ],
     }
 
