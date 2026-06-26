@@ -108,39 +108,11 @@ export default function HelpSupportScreen() {
           {/* Hero */}
           <View style={styles.hero}>
             <View style={styles.heroIcon}><Ionicons name="help-buoy" size={28} color={colors.accent} /></View>
-            <Text style={styles.heroTitle}>How can we help?</Text>
-            <Text style={styles.heroSub}>Browse common questions or send our team a message. We usually reply within 1 business day.</Text>
-          </View>
-
-          {/* FAQ */}
-          <Text style={styles.sectionLabel}>Frequently asked questions</Text>
-          <View style={styles.faqGroup} testID="faq-group">
-            {FAQS.map((f, i) => {
-              const isOpen = open === i;
-              return (
-                <View key={f.q} style={styles.faqItem}>
-                  <TouchableOpacity
-                    onPress={() => setOpen(isOpen ? null : i)}
-                    activeOpacity={0.7}
-                    style={styles.faqHeader}
-                    testID={`faq-toggle-${i}`}
-                  >
-                    <View style={styles.faqIcon}><Ionicons name={f.icon} size={16} color={colors.accent} /></View>
-                    <Text style={styles.faqQ} numberOfLines={2}>{f.q}</Text>
-                    <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
-                  </TouchableOpacity>
-                  {isOpen && (
-                    <View style={styles.faqBody} testID={`faq-answer-${i}`}>
-                      <Text style={styles.faqA}>{f.a}</Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
+            <Text style={styles.heroTitle}>We&apos;re here to help?</Text>
+            <Text style={styles.heroSub}>Send our team a message. We usually reply within 1 business day.</Text>
           </View>
 
           {/* Contact form */}
-          <Text style={styles.sectionLabel}>Still need help? Contact us</Text>
           <View style={styles.form}>
             <Text style={styles.fieldLabel}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -185,9 +157,6 @@ export default function HelpSupportScreen() {
               textAlignVertical="top"
               testID="support-message"
             />
-            <Text style={styles.helper}>
-              We'll reply to {user?.email_address || user?.fallback_address || "your account email"}.
-            </Text>
 
             <TouchableOpacity
               onPress={submit}
