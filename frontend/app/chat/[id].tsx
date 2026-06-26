@@ -14,7 +14,7 @@ import { useAuth } from "../../src/auth";
 import BlueCheck from "../../src/components/BlueCheck";
 import SmartReplyChips from "../../src/components/SmartReplyChips";
 import * as WebBrowser from "expo-web-browser";
-import { Avatar } from "../(tabs)/chats";
+import { Avatar } from "../chats";
 import { colors, radius, space } from "../../src/theme";
 
 const AI_USER_ID = "ai-assistant-wave";

@@ -34,15 +34,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="mail"
         options={{
-          title: "Mail",
+          title: "Inbox",
           tabBarIcon: ({ color, size }) => <Ionicons name="mail" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{
-          title: "Chats",
-          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
         }}
       />
       <Tabs.Screen

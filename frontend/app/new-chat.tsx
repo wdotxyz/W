@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
-import { Avatar } from "./(tabs)/chats";
+import { Avatar } from "./chats";
 import { colors, space, radius } from "../src/theme";
 
 export default function NewChat() {

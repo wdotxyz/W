@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
-import { Avatar } from "./chats";
+import { Avatar } from "../chats";
 import { colors, radius, space } from "../../src/theme";
 
 const BG_COLORS = ["#0B3B60", "#0A7A90", "#00B4D8", "#FF6B6B", "#FFB400", "#34C759", "#9C27B0", "#1A1A1A"];

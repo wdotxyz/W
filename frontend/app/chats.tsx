@@ -5,10 +5,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "../../src/api";
-import { useAuth } from "../../src/auth";
-import BlueCheck from "../../src/components/BlueCheck";
-import { colors, radius, space } from "../../src/theme";
+import { api } from "../src/api";
+import { useAuth } from "../src/auth";
+import BlueCheck from "../src/components/BlueCheck";
+import { colors, radius, space } from "../src/theme";
 
 const AI_USER_ID = "ai-assistant-wave";
 
@@ -87,9 +87,11 @@ export default function ChatsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="chat-back">
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </TouchableOpacity>
         <View style={styles.titleRow}>
-          <Image source={require("../../assets/images/brand-logo.png")} style={styles.headerLogo} resizeMode="contain" />
-          <Text style={styles.pageTitle}>Chats</Text>
+          <Text style={styles.pageTitle}>Chat</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/new-group")} testID="new-group-btn">
@@ -108,7 +110,7 @@ export default function ChatsScreen() {
           testID="seg-chats"
         >
           <Ionicons name="chatbubble" size={14} color={segment === "chats" ? "#fff" : colors.textMuted} />
-          <Text style={[styles.segText, segment === "chats" && styles.segTextOn]}>Chats</Text>
+          <Text style={[styles.segText, segment === "chats" && styles.segTextOn]}>Chat</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setSegment("calls")}

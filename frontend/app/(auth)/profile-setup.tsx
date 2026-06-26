@@ -36,7 +36,7 @@ export default function ProfileSetup() {
         body: JSON.stringify({ name: name.trim(), avatar }),
       });
       setUser(updated);
-      router.replace("/(tabs)/chats");
+      router.replace("/(tabs)/mail");
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to save");
     } finally {

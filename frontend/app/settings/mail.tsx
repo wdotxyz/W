@@ -16,7 +16,7 @@ export default function MailSettingsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="mail-settings-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Mail</Text>
+        <Text style={styles.title}>Inbox</Text>
         <View style={{ width: 40 }} />
       </View>
 

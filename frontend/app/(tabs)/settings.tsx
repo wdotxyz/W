@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../src/auth";
-import { Avatar } from "./chats";
+import { Avatar } from "../chats";
 import { colors, radius, space } from "../../src/theme";
 import { SHOW_PREMIUM } from "../../src/featureFlags";
 
@@ -45,7 +45,7 @@ export default function SettingsScreen() {
           <Row icon="sparkles" label="AI Assistant" onPress={() => router.push("/actions")} testID="row-ai-assistant" />
           <Row icon="color-palette" label="Theme" />
           <Row icon="help-circle" label="Help & Support" onPress={() => router.push("/help")} testID="row-help" />
-          <Row icon="mail" label="Mail" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
+          <Row icon="mail" label="Inbox" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
           <Row icon="person-circle" label="Account" onPress={() => router.push("/settings/account")} testID="row-account-section" />
         </View>
 
