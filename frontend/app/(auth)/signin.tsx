@@ -159,7 +159,7 @@ export default function SignInScreen() {
               activeOpacity={0.85}
             >
               <Ionicons name="person-add-outline" size={18} color={colors.primary} />
-              <Text style={styles.createText}>Create an account</Text>
+              <Text style={styles.createText}>Create new account</Text>
             </TouchableOpacity>
             <Text style={styles.legal}>
               By continuing you agree to W Platforms{" "}
