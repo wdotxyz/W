@@ -1,8 +1,12 @@
 """W backend entry point. Wires routers and lifecycle events."""
+import os
+import uuid
+
+import bcrypt
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from core.config import AI_USER_ID
+from core.config import AI_USER_ID, MAIL_DOMAIN
 from core.db import db, logger, mongo_client
 from core.security import now_iso
 from core.ws import websocket_endpoint
@@ -57,6 +61,30 @@ async def on_startup():
             'is_ai': True,
             'online': True,
         })
+
+    # Seed Support team account (support@w.xyz)
+    support_addr = f'support@{MAIL_DOMAIN}'
+    support_user = await db.users.find_one({'email_address': support_addr})
+    if not support_user:
+        seed_pw = os.environ.get('SUPPORT_SEED_PASSWORD') or 'WSupport2026!'
+        await db.users.insert_one({
+            'id': str(uuid.uuid4()),
+            'phone': '+0000000001',  # placeholder, not used for sign-in
+            'name': 'W Support',
+            'handle': 'support',
+            'email_handle': 'support',
+            'email_address': support_addr,
+            'fallback_address': support_addr,
+            'tier': 'pro',  # team account gets pro-level capabilities
+            'password_hash': bcrypt.hashpw(seed_pw.encode(), bcrypt.gensalt()).decode(),
+            'about': "We're here to help. Email us anytime at support@w.xyz.",
+            'ghost_mail_enabled': False,  # support inbox must keep history
+            'created_at': now_iso(),
+            'last_seen': now_iso(),
+            'is_support': True,
+        })
+        logger.info(f'Seeded W Support team account: {support_addr}')
+
     # Indexes
     await db.users.create_index('id', unique=True)
     await db.users.create_index('phone', unique=True)
