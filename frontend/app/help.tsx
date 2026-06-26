@@ -99,7 +99,7 @@ export default function HelpSupportScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="help-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Help & Support</Text>
+        <Text style={styles.title}>Help Center</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -138,7 +138,7 @@ export default function HelpSupportScreen() {
               value={subject}
               onChangeText={setSubject}
               style={styles.input}
-              placeholder="Quick summary of your issue"
+              placeholder=""
               placeholderTextColor={colors.textMuted}
               maxLength={200}
               testID="support-subject"
@@ -149,7 +149,7 @@ export default function HelpSupportScreen() {
               value={message}
               onChangeText={setMessage}
               style={[styles.input, styles.inputMulti]}
-              placeholder="Tell us what's happening so we can help…"
+              placeholder="How can we help you?"
               placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={6}
@@ -175,8 +175,6 @@ export default function HelpSupportScreen() {
               )}
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.foot}>Or email us at support@w.xyz — we'd love to hear from you.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

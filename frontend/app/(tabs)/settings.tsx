@@ -44,7 +44,7 @@ export default function SettingsScreen() {
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
           <Row icon="sparkles" label="AI Assistant" onPress={() => router.push("/actions")} testID="row-ai-assistant" />
           <Row icon="color-palette" label="Theme" />
-          <Row icon="help-circle" label="Help & Support" onPress={() => router.push("/help")} testID="row-help" />
+          <Row icon="help-circle" label="Help Center" onPress={() => router.push("/help")} testID="row-help" />
           <Row icon="mail" label="Mail Settings" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
           <Row icon="person-circle" label="Account" onPress={() => router.push("/settings/account")} testID="row-account-section" />
         </View>
