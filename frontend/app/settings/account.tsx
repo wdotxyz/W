@@ -19,6 +19,24 @@ export default function AccountSettingsScreen() {
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const openDeactivateChooser = () => {
+    if (busy) return;
+    Alert.alert(
+      "Deactivate your account",
+      "Choose what works for you. You can come back anytime — or remove everything for good.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Pause my account", onPress: onDeactivate },
+        {
+          text: "Delete forever",
+          style: "destructive",
+          onPress: () => { setConfirmText(""); setStep("confirmDelete"); },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
   const close = () => { if (!busy) { setStep("closed"); setConfirmText(""); } };
 
   const onDeactivate = async () => {
@@ -67,7 +85,6 @@ export default function AccountSettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.intro}>Manage security, learn about W, or take a break.</Text>
         <View style={styles.group}>
           <Row icon="shield-checkmark" label="Two-step verification" onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
           <Row icon="lock-closed" label="Change password" onPress={() => router.push("/settings/change-password")} testID="row-change-password" />
@@ -77,42 +94,9 @@ export default function AccountSettingsScreen() {
           {(user as any)?.is_support ? (
             <Row icon="stats-chart" label="App Stats" onPress={() => router.push("/admin/stats")} testID="row-app-stats" />
           ) : null}
-          <Row icon="pause-circle-outline" label="Deactivate account" tone="danger" onPress={() => { setConfirmText(""); setStep("choose"); }} testID="row-deactivate" />
+          <Row icon="pause-circle-outline" label="Deactivate account" onPress={openDeactivateChooser} testID="row-deactivate" />
         </View>
       </ScrollView>
-
-      {/* CHOOSER MODAL */}
-      <Modal visible={step === "choose"} transparent animationType="fade" onRequestClose={close}>
-        <View style={styles.backdrop}>
-          <View style={styles.card} testID="deactivate-modal">
-            <View style={styles.iconWrap}><Ionicons name="pause-circle" size={32} color={colors.danger} /></View>
-            <Text style={styles.cardTitle}>Deactivate your account</Text>
-            <Text style={styles.cardBody}>Choose what works for you. You can come back anytime — or remove everything for good.</Text>
-
-            <TouchableOpacity style={[styles.optionCard, styles.optionPause]} onPress={onDeactivate} disabled={busy} activeOpacity={0.85} testID="option-deactivate">
-              <View style={[styles.optionIcon, { backgroundColor: "#FFF3E0" }]}><Ionicons name="time-outline" size={22} color="#E07B00" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.optionTitle}>Pause my account</Text>
-                <Text style={styles.optionSub}>Hide me from people-search. Chats and mail are kept. Sign back in anytime to reactivate.</Text>
-              </View>
-              {busy ? <ActivityIndicator color={colors.text} /> : <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />}
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.optionCard, styles.optionDelete]} onPress={() => setStep("confirmDelete")} disabled={busy} activeOpacity={0.85} testID="option-delete">
-              <View style={[styles.optionIcon, { backgroundColor: "#FDECEC" }]}><Ionicons name="trash-outline" size={22} color={colors.danger} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.optionTitle, { color: colors.danger }]}>Delete forever</Text>
-                <Text style={styles.optionSub}>Permanently erase your profile, chats, voice notes, statuses, drafts, and all emails. Cannot be undone.</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.danger} />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={close} disabled={busy} style={styles.cardCancel} testID="deactivate-cancel-btn">
-              <Text style={styles.cardCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* CONFIRM DELETE MODAL */}
       <Modal visible={step === "confirmDelete"} transparent animationType="fade" onRequestClose={close}>

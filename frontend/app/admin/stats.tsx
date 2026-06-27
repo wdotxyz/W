@@ -5,9 +5,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "../src/api";
-import { useAuth } from "../src/auth";
-import { colors, radius, space } from "../src/theme";
+import { api } from "../../src/api";
+import { useAuth } from "../../src/auth";
+import { colors, radius, space } from "../../src/theme";
 
 type Stats = {
   as_of: string;
