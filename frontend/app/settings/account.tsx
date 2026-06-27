@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal,
-  TextInput, ActivityIndicator, Alert, Platform, KeyboardAvoidingView,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  TextInput, ActivityIndicator, Pressable, Platform, KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -19,23 +19,7 @@ export default function AccountSettingsScreen() {
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const openDeactivateChooser = () => {
-    if (busy) return;
-    Alert.alert(
-      "Deactivate your account",
-      "Choose what works for you. You can come back anytime — or remove everything for good.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Pause my account", onPress: onDeactivate },
-        {
-          text: "Delete forever",
-          style: "destructive",
-          onPress: () => { setConfirmText(""); setStep("confirmDelete"); },
-        },
-      ],
-      { cancelable: true },
-    );
-  };
+  const openDeactivateChooser = () => { if (!busy) { setConfirmText(""); setStep("choose"); } };
 
   const close = () => { if (!busy) { setStep("closed"); setConfirmText(""); } };
 
@@ -98,10 +82,44 @@ export default function AccountSettingsScreen() {
         </View>
       </ScrollView>
 
-      {/* CONFIRM DELETE MODAL */}
-      <Modal visible={step === "confirmDelete"} transparent animationType="fade" onRequestClose={close}>
+      {/* CHOOSER OVERLAY — inline (no RN Modal so it never freezes on web) */}
+      {step === "choose" && (
+        <Pressable style={styles.backdrop} onPress={close} testID="deactivate-overlay">
+          <Pressable style={styles.card} onPress={(e) => e.stopPropagation()} testID="deactivate-modal">
+            <View style={styles.iconWrap}><Ionicons name="pause-circle" size={32} color={colors.danger} /></View>
+            <Text style={styles.cardTitle}>Deactivate your account</Text>
+            <Text style={styles.cardBody}>Choose what works for you. You can come back anytime — or remove everything for good.</Text>
+
+            <TouchableOpacity style={[styles.optionCard, styles.optionPause]} onPress={onDeactivate} disabled={busy} activeOpacity={0.85} testID="option-deactivate">
+              <View style={[styles.optionIcon, { backgroundColor: "#FFF3E0" }]}><Ionicons name="time-outline" size={22} color="#E07B00" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.optionTitle}>Pause my account</Text>
+                <Text style={styles.optionSub}>Hide me from people-search. Chats and mail are kept. Sign back in anytime to reactivate.</Text>
+              </View>
+              {busy ? <ActivityIndicator color={colors.text} /> : <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.optionCard, styles.optionDelete]} onPress={() => setStep("confirmDelete")} disabled={busy} activeOpacity={0.85} testID="option-delete">
+              <View style={[styles.optionIcon, { backgroundColor: "#FDECEC" }]}><Ionicons name="trash-outline" size={22} color={colors.danger} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.optionTitle, { color: colors.danger }]}>Delete forever</Text>
+                <Text style={styles.optionSub}>Permanently erase your profile, chats, voice notes, statuses, drafts, and all emails. Cannot be undone.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.danger} />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={close} disabled={busy} style={styles.cardCancel} testID="deactivate-cancel-btn">
+              <Text style={styles.cardCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      )}
+
+      {/* CONFIRM DELETE OVERLAY */}
+      {step === "confirmDelete" && (
         <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <View style={styles.card} testID="delete-modal">
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => !busy && setStep("choose")} />
+          <Pressable style={styles.card} onPress={(e) => e.stopPropagation()} testID="delete-modal">
             <View style={[styles.iconWrap, { backgroundColor: "#FDECEC" }]}><Ionicons name="warning" size={28} color={colors.danger} /></View>
             <Text style={styles.cardTitle}>Delete forever?</Text>
             <Text style={styles.cardBody}>We&apos;ll erase {user?.email_address || "your @w.xyz address"}, your chats, voice notes, statuses, drafts and every email. This action cannot be undone.</Text>
@@ -115,9 +133,9 @@ export default function AccountSettingsScreen() {
                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnDangerText}>Delete forever</Text>}
               </TouchableOpacity>
             </View>
-          </View>
+          </Pressable>
         </KeyboardAvoidingView>
-      </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -134,7 +152,7 @@ const styles = StyleSheet.create({
   rowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
   rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: "600" },
   rowHint: { fontSize: 13, color: colors.textMuted, marginRight: 6 },
-  backdrop: { flex: 1, backgroundColor: "rgba(6,21,43,0.55)", alignItems: "center", justifyContent: "center", padding: 24 },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(6,21,43,0.55)", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 100 },
   card: { backgroundColor: colors.surface, borderRadius: 20, padding: 22, width: "100%", maxWidth: 440 },
   iconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#FFF3E0", alignItems: "center", justifyContent: "center", marginBottom: 12, alignSelf: "center" },
   cardTitle: { fontSize: 20, fontWeight: "800", color: colors.text, textAlign: "center", letterSpacing: -0.3 },

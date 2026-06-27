@@ -1,0 +1,38 @@
+{
+  "summary": "Both backend & frontend regression suite for iter17 (inline Pressable overlays). Backend 5/5 PASS via /app/backend/tests/test_iter17_overlay.py (peter login 200, support login 200, /api/admin/stats: support 200, peter 403, anonymous 401). Frontend: after restarting expo (Metro is in CI mode → required to pick up edited account.tsx) ALL 12 review-request UI items PASS on the web preview. Chooser overlay (testIDs deactivate-overlay + deactivate-modal) opens on tapping row-deactivate, shows title 'Deactivate your account', 'Pause my account', 'Delete forever', and Cancel. Cancel button dismisses, backdrop tap dismisses, page stays interactive (row-2fa navigation works post-dismiss → NOT frozen). Tapping option-delete switches to delete-modal with the Type-DELETE input, delete-back-btn returns to chooser. Lowercase 'delete' keeps button visually/functionally disabled (handler returns early on non-DELETE); uppercase DELETE enables it. Regressions verified: intro text 'Manage security, learn about W' is removed; Deactivate label color rgb(6,21,43) (neutral, NOT red); row-app-stats hidden for peter, visible for support; /admin/stats renders recommendation banner ('Stay on SendGrid'), projection (17/9/26), SendGrid vs SES cost block, email volume, users & support. One code defect found: account.tsx still calls Alert.alert() in catch blocks (lines 33, 45) but Alert is NOT imported — will throw ReferenceError if deactivate/delete API fails.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AccountSettingsScreen catch blocks", "issue": "Alert.alert(...) is called on error paths (deactivate/delete catch) but 'Alert' is NOT imported from react-native. Any backend error during POST /api/auth/deactivate or DELETE /api/auth/me will throw 'ReferenceError: Alert is not defined' instead of showing the intended error message. Reference: /app/frontend/app/settings/account.tsx:33,45 (and imports on lines 2-5 do not include Alert).", "testID": "row-deactivate", "priority": "HIGH"},
+      {"component": "Delete-forever button disabled visual", "issue": "When invalid (lowercase 'delete'), computed opacity reads 1 instead of 0.5 — the conditional style `(confirmText !== 'DELETE' || busy) && { opacity: 0.5 }` does not appear to be applied via web. Functionally the press is blocked by `disabled` prop + handler early-return, so this is cosmetic only. Reference: /app/frontend/app/settings/account.tsx:132", "testID": "delete-confirm-btn", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "settings/account", "issues": ["Unused styles still defined (intro). Already noted in iter16 review."]}
+    ],
+    "react_native_issues": [
+      {"component": "Console warnings", "issue": "props.pointerEvents deprecated (use style.pointerEvents) and shadow* style props deprecated (use boxShadow). Repeated warnings on every screen render; coming from third-party RN components."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter17_overlay.py",
+    "/app/test_reports/pytest/iter17_results.xml"
+  ],
+  "action_items": [
+    "Either import { Alert } from 'react-native' OR replace Alert.alert with a small inline error banner / toast in the catch blocks at /app/frontend/app/settings/account.tsx:33 and :45. Current code will ReferenceError on any failed deactivate/delete API call.",
+    "(Optional) Apply the 0.5-opacity style for the disabled state on the Delete-forever button so it visually communicates the disabled state on web; flatten the style array or pass opacity directly via style prop.",
+    "(Optional cleanup) Remove unused `intro` style and other dead style keys in account.tsx StyleSheet."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/settings/account.tsx imports do NOT include `Alert`, yet lines 33 and 45 reference Alert.alert(...). This is a latent runtime bug on every error path.",
+    "Metro runs in CI mode (reloads disabled). After editing files under /app/frontend/app, supervisor must restart expo (`sudo supervisorctl restart expo`) for changes to take effect on the web preview — testers/main agent should keep this in mind.",
+    "The KeyboardAvoidingView wrapping the delete-confirm overlay still uses `style={styles.backdrop}` with position:'absolute'+top:0+left:0+right:0+bottom:0+zIndex:100, mirroring the chooser. Tap-outside dismiss for delete-confirm is wired via a separate StyleSheet.absoluteFill Pressable (line 121) — works correctly in testing."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% on review-request items; 1 latent runtime bug (Alert undefined) flagged for main agent"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Inline Pressable overlay chooser & delete-confirm are fully functional on web — DO retest after main agent fixes the Alert import. Always `sudo supervisorctl restart expo` after editing frontend files because Metro is in CI mode (no hot reload). Test creds: peter@w.xyz / PeterW2026! and support@w.xyz / WSupport2026!. Key testIDs for this screen: row-deactivate, deactivate-overlay, deactivate-modal, option-deactivate, option-delete, deactivate-cancel-btn, delete-modal, delete-confirm-input, delete-back-btn, delete-confirm-btn.",
+  "rca_of_issue": "Latent bug RCA: account.tsx removed `Modal` and `Alert` from its imports per agent_to_agent_context_note, but the catch blocks at lines 33 and 45 still call `Alert.alert(...)`. JS does not error at module load (the reference is inside arrow-function closures, only resolved at invocation), so the happy-path UI works perfectly. The bug surfaces only if /api/auth/deactivate or DELETE /api/auth/me fails — instead of seeing the intended toast, the user gets a ReferenceError in the console and the catch handler aborts (the finally{} still resets busy, so the UI doesn't permanently lock). Fix: either re-add `Alert` to the import list or replace Alert.alert with an inline state-driven banner (preferred for cross-platform parity with the rest of the screen which already avoids RN Modal/Alert by design)."
+}
