@@ -74,6 +74,9 @@ export default function AccountSettingsScreen() {
           <Row icon="key" label="Passkeys" onPress={() => router.push("/settings/passkeys")} testID="row-passkeys" />
           <Row icon="call" label="Change phone number" onPress={() => router.push("/settings/change-phone")} testID="row-change-phone" />
           <Row icon="information-circle" label="About W" onPress={() => router.push("/about")} testID="row-about" />
+          {(user as any)?.is_support ? (
+            <Row icon="stats-chart" label="App Stats" onPress={() => router.push("/admin/stats")} testID="row-app-stats" />
+          ) : null}
           <Row icon="pause-circle-outline" label="Deactivate account" tone="danger" onPress={() => { setConfirmText(""); setStep("choose"); }} testID="row-deactivate" />
         </View>
       </ScrollView>
