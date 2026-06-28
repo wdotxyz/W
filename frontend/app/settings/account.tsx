@@ -90,30 +90,30 @@ export default function AccountSettingsScreen() {
       {step === "choose" && (
         <Pressable style={styles.backdrop} onPress={close} testID="deactivate-overlay">
           <Pressable style={styles.card} onPress={(e) => e.stopPropagation()} testID="deactivate-modal">
-            <View style={styles.iconWrap}><Ionicons name="pause-circle" size={32} color={colors.danger} /></View>
-            <Text style={styles.cardTitle}>Deactivate your account</Text>
-            <Text style={styles.cardBody}>Choose what works for you. You can come back anytime — or remove everything for good.</Text>
+            <View style={styles.cardHeader}>
+              <TouchableOpacity onPress={close} disabled={busy} style={styles.cardBack} testID="deactivate-back-btn" activeOpacity={0.7}>
+                <Ionicons name="chevron-back" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.cardHeaderTitle}>Deactivate account</Text>
+              <View style={{ width: 32 }} />
+            </View>
 
             <TouchableOpacity style={[styles.optionCard, styles.optionPause]} onPress={onDeactivate} disabled={busy} activeOpacity={0.85} testID="option-deactivate">
-              <View style={[styles.optionIcon, { backgroundColor: "#FFF3E0" }]}><Ionicons name="time-outline" size={22} color="#E07B00" /></View>
+              <View style={[styles.optionIcon, { backgroundColor: "#FFF3E0" }]}><Ionicons name="time-outline" size={20} color="#E07B00" /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.optionTitle}>Pause my account</Text>
-                <Text style={styles.optionSub}>Hide me from people-search. Chats and mail are kept. Sign back in anytime to reactivate.</Text>
+                <Text style={styles.optionSub}>Sign back in anytime to reactivate.</Text>
               </View>
-              {busy ? <ActivityIndicator color={colors.text} /> : <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />}
+              {busy ? <ActivityIndicator color={colors.text} /> : <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />}
             </TouchableOpacity>
 
             <TouchableOpacity style={[styles.optionCard, styles.optionDelete]} onPress={() => setStep("confirmDelete")} disabled={busy} activeOpacity={0.85} testID="option-delete">
-              <View style={[styles.optionIcon, { backgroundColor: "#FDECEC" }]}><Ionicons name="trash-outline" size={22} color={colors.danger} /></View>
+              <View style={[styles.optionIcon, { backgroundColor: "#FDECEC" }]}><Ionicons name="trash-outline" size={20} color={colors.danger} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.optionTitle, { color: colors.danger }]}>Delete forever</Text>
-                <Text style={styles.optionSub}>Permanently erase your profile, chats, voice notes, statuses, drafts, and all emails. Cannot be undone.</Text>
+                <Text style={styles.optionSub}>Erase everything. Cannot be undone.</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.danger} />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={close} disabled={busy} style={styles.cardCancel} testID="deactivate-cancel-btn">
-              <Text style={styles.cardCancelText}>Cancel</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.danger} />
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -152,6 +152,9 @@ const styles = StyleSheet.create({
   scroll: { padding: space.xl, gap: 14 },
   intro: { fontSize: 13.5, color: colors.textMuted, lineHeight: 19 },
   group: { backgroundColor: colors.surface2, borderRadius: radius.xl, overflow: "hidden" },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, marginTop: -4 },
+  cardBack: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", marginLeft: -4 },
+  cardHeaderTitle: { fontSize: 17, fontWeight: "800", color: colors.text, letterSpacing: -0.2 },
   signOut: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.surface2, borderRadius: radius.xl, paddingVertical: 14, marginTop: 6 },
   signOutText: { color: colors.danger, fontWeight: "700", fontSize: 15 },
   rowItem: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12 },
