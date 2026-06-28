@@ -26,6 +26,7 @@ export default function MailScreen() {
   const [searchActive, setSearchActive] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
   const debounceRef = useRef<any>(null);
   const selectMode = selected.size > 0;
 
@@ -225,6 +226,38 @@ export default function MailScreen() {
             <FolderTab icon="send" label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
             <FolderTab icon="warning" label="Spam" active={folder === "spam"} onPress={() => setFolder("spam")} testID="mail-tab-spam" />
           </ScrollView>
+          {(folder === "inbox" || folder === "spam") && (
+            <TouchableOpacity
+              onPress={async () => {
+                if (scanBusy) return;
+                setScanBusy(true);
+                try {
+                  const endpoint = folder === "spam" ? "/ai/verify-spam" : "/ai/scan-inbox-spam";
+                  const res: any = await api(endpoint, { method: "POST" });
+                  const verb = folder === "spam" ? "released to Inbox" : "moved to Spam";
+                  const count = folder === "spam" ? res?.released : res?.moved;
+                  Alert.alert(
+                    "AI scan complete",
+                    count ? `${count} email${count === 1 ? "" : "s"} ${verb}.` : `No changes — scanned ${res?.scanned || 0} email${res?.scanned === 1 ? "" : "s"}.`,
+                  );
+                  load();
+                } catch (e: any) {
+                  Alert.alert("Scan failed", e?.message || "Please try again.");
+                } finally {
+                  setScanBusy(false);
+                }
+              }}
+              style={styles.aiScanBtn}
+              testID="ai-spam-scan-btn"
+              activeOpacity={0.85}
+              disabled={scanBusy}
+            >
+              {scanBusy
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="sparkles" size={13} color="#fff" />}
+              <Text style={styles.aiScanText}>{folder === "spam" ? "Verify" : "Scan"}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 

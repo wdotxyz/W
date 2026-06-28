@@ -222,14 +222,25 @@ async def mark_mail_spam(mail_id: str, user=Depends(get_current_user)):
 
 @router.post('/mail/{mail_id}/not-spam')
 async def mark_mail_not_spam(mail_id: str, user=Depends(get_current_user)):
-    """Move a spam-flagged email back to the inbox."""
+    """Move a spam-flagged email back to the inbox.
+
+    Also learns: the sender's domain joins the user's personal allowlist so
+    future emails from that domain skip the auto-triage step entirely.
+    """
     addrs = _addrs_for(user)
-    res = await db.emails.update_one(
+    mail = await db.emails.find_one(
         {'id': mail_id, 'folder': 'spam', 'to_addrs': {'$in': addrs or [None]}},
+        {'_id': 0, 'from_addr': 1},
+    )
+    if not mail:
+        raise HTTPException(404, 'Email not found in spam.')
+    await db.emails.update_one(
+        {'id': mail_id},
         {'$set': {'folder': 'inbox'}, '$unset': {'spam_marked_at': '', 'spam_reason': ''}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(404, 'Email not found in spam.')
+    dom = _sender_domain(mail.get('from_addr') or '')
+    if dom:
+        await db.users.update_one({'id': user['id']}, {'$addToSet': {'inbox_allowlist': dom}})
     return {'ok': True, 'mail_id': mail_id, 'folder': 'inbox'}
 
 
@@ -258,14 +269,25 @@ async def mark_mail_promotions(mail_id: str, user=Depends(get_current_user)):
 
 @router.post('/mail/{mail_id}/not-promotions')
 async def mark_mail_not_promotions(mail_id: str, user=Depends(get_current_user)):
-    """Move a promotions-flagged email back to the inbox."""
+    """Move a promotions-flagged email back to the inbox.
+
+    Also learns: the sender's domain joins the user's personal allowlist so
+    future emails from that domain skip the auto-triage step entirely.
+    """
     addrs = _addrs_for(user)
-    res = await db.emails.update_one(
+    mail = await db.emails.find_one(
         {'id': mail_id, 'folder': 'promotions', 'to_addrs': {'$in': addrs or [None]}},
+        {'_id': 0, 'from_addr': 1},
+    )
+    if not mail:
+        raise HTTPException(404, 'Email not found in promotions.')
+    await db.emails.update_one(
+        {'id': mail_id},
         {'$set': {'folder': 'inbox'}, '$unset': {'promotions_marked_at': '', 'promotions_reason': ''}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(404, 'Email not found in promotions.')
+    dom = _sender_domain(mail.get('from_addr') or '')
+    if dom:
+        await db.users.update_one({'id': user['id']}, {'$addToSet': {'inbox_allowlist': dom}})
     return {'ok': True, 'mail_id': mail_id, 'folder': 'inbox'}
 
 
@@ -761,9 +783,9 @@ async def mail_inbound(request: Request):
         await db.emails.insert_one(dict(rec))
         stored += 1
         await ws_manager.send_to_user(owner['id'], {'type': 'new_email', 'email': rec})
-        # Async triage: classify into spam / promotions / inbox without
-        # blocking the SendGrid webhook (which has a strict timeout).
-        asyncio.create_task(_triage_inbound(rec, owner['id']))
+        # Async triage: header heuristics → user allowlist → Claude. Fire-and-forget
+        # so the SendGrid webhook isn't blocked.
+        asyncio.create_task(_triage_inbound(rec, owner, str(raw_headers or '')))
         # Optional out-of-office auto-reply
         await _maybe_send_auto_reply(owner, sender, subject, in_reply_to=msg_id,
                                        incoming_body=(text or _strip_html(html)))
@@ -771,10 +793,98 @@ async def mail_inbound(request: Request):
     return {'ok': True, 'stored': stored}
 
 
-async def _triage_inbound(rec: dict, owner_id: str) -> None:
-    """Background task: ask Claude to classify a freshly-received email and
-    move it to spam/promotions if applicable. Always best-effort."""
+# Known ESPs / bulk-mail SaaS — emails from these are almost always Promos.
+_PROMO_ESP_SUFFIXES = (
+    'mail.mailchimp.com', 'mailchimpapp.com', 'mailchimp.com',
+    'sendgrid.net', 'sendgrid.com',
+    'mandrillapp.com', 'mc.sendgrid.net',
+    'klaviyomail.com', 'klaviyo.com',
+    'mktomail.com', 'mktdns.com',  # marketo
+    'sparkpostmail.com',
+    'amazonses.com',  # often used for bulk
+    'campaign-archive.com', 'list-manage.com',
+    'salesforce.com', 'pardot.com',
+    'constantcontact.com', 'ccsend.com',
+    'sendinblue.com', 'sib.org',  # brevo
+    'iterable.email', 'iterable.com',
+    'customer.io',
+    'postmarkapp.com',  # transactional but often promo too
+    'mailerlite.com',
+    'omnisend.com',
+    'convertkit.com', 'convertkit-mail.com',
+    'mailjet.com',
+    'beehiiv.com', 'list-mail.beehiiv.com',
+    'substack.com',
+)
+
+
+def _looks_like_bulk(raw_headers: str, sender: str) -> bool:
+    """Cheap header-only check. True if the email almost certainly belongs
+    in Promotions / bulk-mail. Skips the AI call when True."""
+    h = (raw_headers or '').lower()
+    if not h and not sender:
+        return False
+    signals = (
+        'list-unsubscribe:',
+        'list-unsubscribe-post:',
+        'list-id:',
+        'precedence: bulk',
+        'precedence:bulk',
+        'precedence: list',
+        'x-mailgun-batch:',
+        'x-campaign',
+        'x-mailchimp',
+        'x-mc-user',
+        'feedback-id:',  # used by Gmail / Apple for bulk feedback loop
+    )
+    if any(s in h for s in signals):
+        return True
+    s = (sender or '').lower()
+    if '@' in s:
+        domain = s.split('@', 1)[1]
+        if any(domain == d or domain.endswith('.' + d) for d in _PROMO_ESP_SUFFIXES):
+            return True
+    return False
+
+
+def _sender_domain(addr: str) -> str:
+    a = (addr or '').lower().strip()
+    return a.split('@', 1)[1] if '@' in a else ''
+
+
+async def _triage_inbound(rec: dict, owner: dict, raw_headers: str) -> None:
+    """Background task: route a freshly-received email to the right folder.
+
+    Layered like Gmail's:
+      1. Personal allowlist  → keep in inbox, no AI cost.
+      2. Header heuristics   → bulk/marketing markers → Promos, no AI cost.
+      3. Claude semantic AI  → spam vs promotions vs inbox.
+    """
     try:
+        owner_id = owner['id']
+        sender = rec.get('from_addr') or ''
+        dom = _sender_domain(sender)
+
+        # 1) Personal allowlist (sender domains the user has rescued before)
+        allow: set = set((owner.get('inbox_allowlist') or []))
+        if dom and dom in allow:
+            return  # stays in inbox
+
+        # 2) Bulk-mail header heuristics → Promotions (no AI call)
+        if _looks_like_bulk(raw_headers, sender):
+            await db.emails.update_one(
+                {'id': rec['id']},
+                {'$set': {
+                    'folder': 'promotions',
+                    'promotions_marked_at': now_iso(),
+                    'promotions_reason': 'Bulk-mail headers detected.',
+                    'ai_triage': {'category': 'promotions', 'confidence': 0.95, 'reason': 'header-heuristic'},
+                }},
+            )
+            await ws_manager.send_to_user(owner_id, {'type': 'mail_triaged', 'mail_id': rec['id'], 'folder': 'promotions'})
+            return
+
+        # 3) Claude semantic triage
         result = await ai_classify_email(rec)
         if not result:
             return
@@ -786,12 +896,10 @@ async def _triage_inbound(rec: dict, owner_id: str) -> None:
             upd['spam_marked_at'] = now_iso()
             upd['spam_reason'] = result.get('reason') or ''
             upd['starred'] = False
-        else:  # promotions
+        else:
             upd['promotions_marked_at'] = now_iso()
             upd['promotions_reason'] = result.get('reason') or ''
         await db.emails.update_one({'id': rec['id']}, {'$set': upd})
-        # Tell the client to refresh its lists so the new email no longer
-        # sits in the inbox view that was just opened.
         await ws_manager.send_to_user(owner_id, {
             'type': 'mail_triaged',
             'mail_id': rec['id'],
