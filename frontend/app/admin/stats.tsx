@@ -74,7 +74,7 @@ export default function AdminStatsScreen() {
         <View style={styles.center}>
           <Ionicons name="lock-closed" size={32} color={colors.textMuted} />
           <Text style={styles.errTitle}>Support team only</Text>
-          <Text style={styles.errBody}>Sign in with the support@w.xyz account to see app stats.</Text>
+          <Text style={styles.errBody}>Sign in with your support team account to see app stats.</Text>
           <Text style={styles.errBody}>{err}</Text>
         </View>
       ) : stats ? (

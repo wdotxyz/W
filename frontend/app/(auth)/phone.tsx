@@ -187,7 +187,7 @@ export default function PhoneScreen() {
                   <Text style={[styles.statusText, { color: colors.danger, fontWeight: "700" }]}>Reserved handle</Text>
                 </View>
                 <Text style={[styles.statusText, { marginTop: 2 }]}>
-                  Email <Text style={{ color: colors.accent, fontWeight: "700" }}>support@w.xyz</Text> to request it — may require a premium subscription if released.
+                  Reach out through the in-app Help Center after sign-up to request it — may require a premium subscription if released.
                 </Text>
               </View>
             ) : usernameStatus.tier === "unavailable" ? (

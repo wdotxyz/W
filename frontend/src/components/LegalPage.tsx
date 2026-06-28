@@ -41,9 +41,6 @@ export default function LegalPage({ title, lastUpdated, intro, sections, testID 
             ))}
           </View>
         ))}
-        <Text style={styles.footer}>
-          Questions? Email us at support@w.xyz.
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );

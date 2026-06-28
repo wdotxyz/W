@@ -18,7 +18,7 @@ export default function Terms() {
           body: [
             "You are responsible for keeping your phone number, OTP codes and device secure.",
             "You agree to provide accurate information and to keep it up to date.",
-            "Your @w.xyz handle is yours while your account is active. W reserves the right to deny, reclaim, or retract any handle at any time — including after sign up — when a handle is inactive, impersonates another person or organization, infringes a trademark, contains profanity or slurs, or is otherwise reserved (e.g. admin, support, well-known stage names). To request a reserved handle, email support@w.xyz; release may require a premium subscription.",
+            "Your @w.xyz handle is yours while your account is active. W reserves the right to deny, reclaim, or retract any handle at any time — including after sign up — when a handle is inactive, impersonates another person or organization, infringes a trademark, contains profanity or slurs, or is otherwise reserved (e.g. admin, support, well-known stage names). To request a reserved handle, reach us through the in-app Help Center; release may require a premium subscription.",
           ],
         },
         {
@@ -48,7 +48,7 @@ export default function Terms() {
         },
         {
           heading: "Termination",
-          body: "You can delete your account anytime from Settings or by emailing support@w.xyz. We may suspend or terminate accounts that violate these Terms.",
+          body: "You can delete your account anytime from Settings or through the in-app Help Center. We may suspend or terminate accounts that violate these Terms.",
         },
         {
           heading: "Limitation of Liability",
@@ -60,7 +60,7 @@ export default function Terms() {
         },
         {
           heading: "Contact Us",
-          body: "Questions about these Terms? Email support@w.xyz.",
+          body: "Questions about these Terms? Reach us through the in-app Help Center.",
         },
       ]}
     />

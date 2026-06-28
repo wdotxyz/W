@@ -194,6 +194,44 @@ async def mail_starred(user=Depends(get_current_user)):
     return msgs
 
 
+@router.get('/mail/spam')
+async def mail_spam(user=Depends(get_current_user)):
+    """Spam folder — emails routed here either manually or by the AI spam scanner."""
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    addrs = [a for a in [addr, fb] if a]
+    if not addrs:
+        return []
+    q = {'to_addrs': {'$in': addrs}, 'folder': 'spam'}
+    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return msgs
+
+
+@router.post('/mail/{mail_id}/spam')
+async def mark_mail_spam(mail_id: str, user=Depends(get_current_user)):
+    addrs = _addrs_for(user)
+    res = await db.emails.update_one(
+        {'id': mail_id, 'to_addrs': {'$in': addrs or [None]}},
+        {'$set': {'folder': 'spam', 'spam_marked_at': now_iso(), 'starred': False}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, 'Email not found.')
+    return {'ok': True, 'mail_id': mail_id, 'folder': 'spam'}
+
+
+@router.post('/mail/{mail_id}/not-spam')
+async def mark_mail_not_spam(mail_id: str, user=Depends(get_current_user)):
+    """Move a spam-flagged email back to the inbox."""
+    addrs = _addrs_for(user)
+    res = await db.emails.update_one(
+        {'id': mail_id, 'folder': 'spam', 'to_addrs': {'$in': addrs or [None]}},
+        {'$set': {'folder': 'inbox'}, '$unset': {'spam_marked_at': '', 'spam_reason': ''}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, 'Email not found in spam.')
+    return {'ok': True, 'mail_id': mail_id, 'folder': 'inbox'}
+
+
 @router.get('/mail/archived')
 async def mail_archived(user=Depends(get_current_user)):
     addr = (user.get('email_address') or '').lower()

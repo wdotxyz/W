@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl,
   ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert,
-  Animated,
+  Animated, ScrollView,
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,7 +13,7 @@ import { useAuth } from "../../src/auth";
 import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
 
-type Folder = "inbox" | "drafts" | "sent" | "starred";
+type Folder = "inbox" | "drafts" | "sent" | "starred" | "spam";
 
 export default function MailScreen() {
   const router = useRouter();
@@ -96,11 +96,44 @@ export default function MailScreen() {
       </View>
 
       {!searchActive && (
-        <View style={styles.tabs}>
-          <FolderTab label="Inbox" active={folder === "inbox"} onPress={() => setFolder("inbox")} testID="mail-tab-inbox" />
-          <FolderTab label="Starred" active={folder === "starred"} onPress={() => setFolder("starred")} testID="mail-tab-starred" />
-          <FolderTab label="Drafts" active={folder === "drafts"} onPress={() => setFolder("drafts")} testID="mail-tab-drafts" />
-          <FolderTab label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
+        <View style={styles.tabsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabsScroll}
+            testID="mail-tabs-carousel"
+          >
+            <FolderTab icon="mail" label="Inbox" active={folder === "inbox"} onPress={() => setFolder("inbox")} testID="mail-tab-inbox" />
+            <FolderTab icon="star" label="Starred" active={folder === "starred"} onPress={() => setFolder("starred")} testID="mail-tab-starred" />
+            <FolderTab icon="document-text" label="Drafts" active={folder === "drafts"} onPress={() => setFolder("drafts")} testID="mail-tab-drafts" />
+            <FolderTab icon="send" label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
+            <FolderTab icon="warning" label="Spam" active={folder === "spam"} onPress={() => setFolder("spam")} testID="mail-tab-spam" />
+          </ScrollView>
+          {(folder === "inbox" || folder === "spam") && (
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  const endpoint = folder === "spam" ? "/ai/verify-spam" : "/ai/scan-inbox-spam";
+                  const res: any = await api(endpoint, { method: "POST" });
+                  const verb = folder === "spam" ? "released back to Inbox" : "moved to Spam";
+                  const count = folder === "spam" ? res?.released : res?.moved;
+                  Alert.alert(
+                    "AI scan complete",
+                    count ? `${count} email${count === 1 ? "" : "s"} ${verb}.` : `No changes — scanned ${res?.scanned || 0} email${res?.scanned === 1 ? "" : "s"}.`,
+                  );
+                  load();
+                } catch (e: any) {
+                  Alert.alert("Scan failed", e?.message || "Please try again.");
+                }
+              }}
+              style={styles.aiScanBtn}
+              testID="ai-spam-scan-btn"
+              activeOpacity={0.85}
+            >
+              <Ionicons name="sparkles" size={14} color="#fff" />
+              <Text style={styles.aiScanText}>{folder === "spam" ? "Verify" : "Scan"}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -132,6 +165,7 @@ export default function MailScreen() {
                     : folder === "inbox" ? "mail-open-outline"
                     : folder === "starred" ? "star-outline"
                     : folder === "drafts" ? "document-text-outline"
+                    : folder === "spam" ? "warning-outline"
                     : "send-outline"
                 }
                 size={48}
@@ -142,6 +176,7 @@ export default function MailScreen() {
                   : folder === "inbox" ? "Inbox empty"
                   : folder === "starred" ? "Nothing saved yet"
                   : folder === "drafts" ? "No drafts"
+                  : folder === "spam" ? "No spam — nice"
                   : "No sent mail"}
               </Text>
               {!searchActive && (
@@ -150,6 +185,7 @@ export default function MailScreen() {
                     ? `Send emails to ${user.email_address} from any provider.`
                     : folder === "starred" ? "Open a thread and tap Save to keep it forever."
                     : folder === "drafts" ? "Drafts you save while composing will appear here."
+                    : folder === "spam" ? "Tap Verify to have AI double-check the spam folder for false positives."
                     : "Tap the pencil to compose."}
                 </Text>
               )}
@@ -179,8 +215,11 @@ function groupByThread(rows: any[]): any[] {
   return out;
 }
 
-const FolderTab = ({ label, active, onPress, testID }: any) => (
-  <TouchableOpacity onPress={onPress} style={[styles.foldBtn, active && styles.foldBtnOn]} testID={testID}>
+const FolderTab = ({ label, icon, active, onPress, testID }: any) => (
+  <TouchableOpacity onPress={onPress} style={[styles.foldBtn, active && styles.foldBtnOn]} testID={testID} activeOpacity={0.75}>
+    {icon ? (
+      <Ionicons name={icon} size={14} color={active ? "#fff" : colors.textMuted} style={{ marginRight: 6 }} />
+    ) : null}
     <Text style={[styles.foldText, active && styles.foldTextOn]}>{label}</Text>
   </TouchableOpacity>
 );
@@ -360,8 +399,12 @@ const styles = StyleSheet.create({
   searchRow: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.pill, paddingHorizontal: 14, gap: 8 },
   searchInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 10 },
   tabs: { flexDirection: "row", gap: 8, paddingHorizontal: space.xl, marginBottom: 8 },
-  foldBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.surface2 },
+  tabsRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingRight: space.xl, marginBottom: 8 },
+  tabsScroll: { paddingHorizontal: space.xl, gap: 8, paddingVertical: 2 },
+  foldBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.surface2, flexDirection: "row", alignItems: "center" },
   foldBtnOn: { backgroundColor: colors.primary },
+  aiScanBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.accent },
+  aiScanText: { color: "#fff", fontSize: 12.5, fontWeight: "800", letterSpacing: 0.2 },
   foldText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
   foldTextOn: { color: "#fff" },
   row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: space.xl, paddingVertical: 12, gap: 10 },

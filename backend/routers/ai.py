@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.db import db
-from core.security import get_current_user
+from core.security import get_current_user, now_iso
 from services.ai_assist import (
-    compose_email, extract_actions, rewrite_text,
+    ai_spam_check, compose_email, extract_actions, rewrite_text,
     smart_reply_suggestions, suggest_subjects, summarize_thread,
     transcribe_audio_b64, voice_to_email,
 )
@@ -160,3 +160,63 @@ async def ai_actions(user=Depends(get_current_user)):
         threads[tid]['messages'].append({'from_addr': m.get('from_addr'), 'body': m.get('body')})
     actions = await extract_actions(list(threads.values()))
     return {'actions': actions}
+
+
+# --- Spam scanning ----------------------------------------------------------
+async def _user_addrs(user: dict) -> list:
+    addr = (user.get('email_address') or '').lower()
+    fb = (user.get('fallback_address') or '').lower()
+    return [a for a in [addr, fb] if a]
+
+
+@router.post('/ai/scan-inbox-spam')
+async def scan_inbox_for_spam(user=Depends(get_current_user)):
+    """Run Claude over the last ~25 inbox emails and move spam to the spam folder."""
+    addrs = await _user_addrs(user)
+    if not addrs:
+        return {'scanned': 0, 'moved': 0, 'results': []}
+    msgs = await db.emails.find(
+        {'to_addrs': {'$in': addrs}, 'folder': 'inbox', 'archived': {'$ne': True}, 'starred': {'$ne': True}},
+        {'_id': 0, 'id': 1, 'from_addr': 1, 'from_name': 1, 'subject': 1, 'body': 1},
+    ).sort('created_at', -1).to_list(25)
+
+    if not msgs:
+        return {'scanned': 0, 'moved': 0, 'results': []}
+
+    results = await ai_spam_check(msgs)
+    moved_ids = [r['id'] for r in results if r.get('is_spam') and r.get('confidence', 0) >= 0.65]
+    if moved_ids:
+        # Build a reason map for each spam id
+        reason_map = {r['id']: r.get('reason', '') for r in results if r.get('is_spam')}
+        # Update one at a time so we can set per-mail reason
+        for mid in moved_ids:
+            await db.emails.update_one(
+                {'id': mid, 'to_addrs': {'$in': addrs}},
+                {'$set': {'folder': 'spam', 'spam_marked_at': now_iso(), 'spam_reason': reason_map.get(mid, ''), 'spam_by_ai': True}},
+            )
+
+    return {'scanned': len(msgs), 'moved': len(moved_ids), 'results': results}
+
+
+@router.post('/ai/verify-spam')
+async def verify_spam_folder(user=Depends(get_current_user)):
+    """Scan the user's spam folder and release any false positives back to the inbox."""
+    addrs = await _user_addrs(user)
+    if not addrs:
+        return {'scanned': 0, 'released': 0, 'results': []}
+    msgs = await db.emails.find(
+        {'to_addrs': {'$in': addrs}, 'folder': 'spam'},
+        {'_id': 0, 'id': 1, 'from_addr': 1, 'from_name': 1, 'subject': 1, 'body': 1},
+    ).sort('created_at', -1).to_list(25)
+    if not msgs:
+        return {'scanned': 0, 'released': 0, 'results': []}
+
+    results = await ai_spam_check(msgs)
+    # Anything Claude flags as NOT spam with confidence >= 0.65 → release back to inbox
+    release_ids = [r['id'] for r in results if (not r.get('is_spam')) and r.get('confidence', 0) >= 0.65]
+    if release_ids:
+        await db.emails.update_many(
+            {'id': {'$in': release_ids}, 'to_addrs': {'$in': addrs}},
+            {'$set': {'folder': 'inbox'}, '$unset': {'spam_marked_at': '', 'spam_reason': '', 'spam_by_ai': ''}},
+        )
+    return {'scanned': len(msgs), 'released': len(release_ids), 'results': results}

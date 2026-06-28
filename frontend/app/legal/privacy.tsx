@@ -36,14 +36,14 @@ export default function Privacy() {
         },
         {
           heading: "Data Retention",
-          body: "Your account data is kept while your account is active. Messages and emails remain until you delete them or close your account. You can request deletion of your account by emailing support@w.xyz.",
+          body: "Your account data is kept while your account is active. Messages and emails remain until you delete them or close your account. You can request deletion of your account anytime through the in-app Help Center.",
         },
         {
           heading: "Your Choices & Rights",
           body: [
             "Access, update or delete your profile and content from within the app.",
             "Turn off notifications from Settings → Notifications.",
-            "Request a copy or deletion of your data by emailing support@w.xyz. We respond within 30 days.",
+            "Request a copy or deletion of your data through the in-app Help Center. We respond within 30 days.",
           ],
         },
         {
@@ -52,7 +52,7 @@ export default function Privacy() {
         },
         {
           heading: "Children",
-          body: "W is not directed to children under 13. We do not knowingly collect personal information from children under 13. If you believe a child has provided us data, contact support@w.xyz.",
+          body: "W is not directed to children under 13. We do not knowingly collect personal information from children under 13. If you believe a child has provided us data, reach us through the in-app Help Center.",
         },
         {
           heading: "Changes to This Policy",
@@ -60,7 +60,7 @@ export default function Privacy() {
         },
         {
           heading: "Contact Us",
-          body: "Questions about this policy? Email support@w.xyz.",
+          body: "Questions about this policy? Reach us through the in-app Help Center.",
         },
       ]}
     />

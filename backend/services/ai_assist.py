@@ -314,3 +314,71 @@ async def extract_actions(threads: List[Dict]) -> List[Dict]:
             'source_subject': str(it.get('source_subject') or '').strip()[:200],
         })
     return cleaned
+
+
+async def ai_spam_check(emails: List[Dict]) -> List[Dict]:
+    """Classify a batch of emails as spam or not_spam using Claude.
+
+    Each input email should have keys: id, from_addr, from_name, subject, body.
+    Returns a list of {id, is_spam, confidence, reason} for each email Claude
+    can confidently classify; emails it doesn't return are treated as not_spam.
+    """
+    if not EMERGENT_LLM_KEY or not emails:
+        return []
+
+    items = []
+    for e in emails[:25]:  # keep prompts small
+        items.append({
+            'id': str(e.get('id') or ''),
+            'from': f"{e.get('from_name') or ''} <{e.get('from_addr') or ''}>".strip(),
+            'subject': (e.get('subject') or '')[:160],
+            'preview': (e.get('body') or '').replace('\n', ' ')[:400],
+        })
+
+    system = (
+        "You are a friendly, accurate email spam classifier. Flag obvious junk: "
+        "phishing attempts, sketchy crypto/financial schemes, fake delivery / "
+        "billing scams, bulk marketing the user clearly didn't sign up for, "
+        "lookalike domains, sender impersonation. Do NOT flag legitimate "
+        "newsletters the user might be subscribed to, transactional receipts, "
+        "personal mail, or anything you're not sure about. Be conservative — "
+        "when in doubt, mark not_spam.\n\n"
+        "Return ONLY valid JSON in this exact shape:\n"
+        '{"results": [{"id": "<email-id>", "is_spam": true|false, "confidence": 0.0-1.0, "reason": "<short>"}]}\n'
+        "Include EVERY email id you were given."
+    )
+    prompt = f"Classify these {len(items)} emails:\n\n{json.dumps(items, ensure_ascii=False)}"
+
+    try:
+        raw = await _ask_claude(system, prompt, session_id='w-ai-spam', max_chars_in=12000)
+    except Exception as e:
+        logger.error(f'ai_spam_check failed: {type(e).__name__}: {str(e)[:120]}')
+        return []
+    if not raw:
+        return []
+
+    # extract first JSON object
+    m = re.search(r'\{[\s\S]*\}', raw)
+    if not m:
+        return []
+    try:
+        parsed = json.loads(m.group(0))
+    except Exception:
+        return []
+
+    out: List[Dict] = []
+    for r in (parsed.get('results') or [])[:30]:
+        eid = str(r.get('id') or '').strip()
+        if not eid:
+            continue
+        try:
+            conf = float(r.get('confidence') or 0.0)
+        except Exception:
+            conf = 0.0
+        out.append({
+            'id': eid,
+            'is_spam': bool(r.get('is_spam')),
+            'confidence': max(0.0, min(1.0, conf)),
+            'reason': str(r.get('reason') or '')[:200],
+        })
+    return out
