@@ -30,6 +30,7 @@ export default function ChangePasswordScreen() {
   const [confirm, setConfirm] = useState("");
   const [showA, setShowA] = useState(false);
   const [showB, setShowB] = useState(false);
+  const [showC, setShowC] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const strength = useMemo(() => scorePassword(next), [next]);
@@ -148,11 +149,14 @@ export default function ChangePasswordScreen() {
                 onChangeText={setConfirm}
                 placeholder="Re-enter your new password"
                 placeholderTextColor={colors.textMuted}
-                secureTextEntry={!showB}
+                secureTextEntry={!showC}
                 autoCapitalize="none"
                 autoCorrect={false}
                 testID="cp-confirm"
               />
+              <TouchableOpacity onPress={() => setShowC((v) => !v)} style={styles.eyeBtn} testID="cp-confirm-eye">
+                <Ionicons name={showC ? "eye-off" : "eye"} size={20} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
             {confirm.length > 0 && confirm !== next && (
               <Text style={styles.warn}>Passwords don't match yet.</Text>
