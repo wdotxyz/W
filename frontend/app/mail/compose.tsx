@@ -39,6 +39,8 @@ export default function Compose() {
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [subjectPicks, setSubjectPicks] = useState<string[]>([]);
+  const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
   const autoSaveRef = useRef<any>(null);
   const initialLoad = useRef(true);
 
@@ -194,7 +196,8 @@ export default function Compose() {
     try {
       const res = await api<{ subjects: string[] }>("/ai/subject", { method: "POST", body: JSON.stringify({ body }) });
       if (!res.subjects?.length) { Alert.alert("No suggestions returned"); return; }
-      Alert.alert("Pick a subject", "", res.subjects.map((s) => ({ text: s, onPress: () => setSubject(s) })).concat([{ text: "Cancel", style: "cancel" as const, onPress: () => {} }]));
+      setSubjectPicks(res.subjects);
+      setSubjectPickerOpen(true);
     } catch (e: any) { Alert.alert("AI couldn't suggest", e.message); }
     finally { setAiBusy(null); }
   };
@@ -388,6 +391,36 @@ export default function Compose() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Subject Picker Modal */}
+      <Modal visible={subjectPickerOpen} transparent animationType="fade" onRequestClose={() => setSubjectPickerOpen(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalBackdrop} onPress={() => setSubjectPickerOpen(false)} testID="subject-picker-backdrop">
+          <TouchableOpacity activeOpacity={1} style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Ionicons name="reader" size={20} color={colors.accent} />
+              <Text style={styles.sheetTitle}>Pick a subject</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setSubjectPickerOpen(false)} testID="subject-picker-close"><Ionicons name="close" size={22} color={colors.textMuted} /></TouchableOpacity>
+            </View>
+            <Text style={styles.sheetSection}>{subjectPicks.length} suggestion{subjectPicks.length === 1 ? "" : "s"} from W AI</Text>
+            {subjectPicks.map((s, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.subjectPick}
+                onPress={() => { setSubject(s); setSubjectPickerOpen(false); }}
+                testID={`subject-pick-${i}`}
+                activeOpacity={0.7}
+              >
+                <View style={styles.aiOptionIcon}><Text style={{ fontWeight: "800", color: colors.accent }}>{i + 1}</Text></View>
+                <Text style={styles.subjectPickText}>{s}</Text>
+                <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ))}
+            <View style={{ height: 20 }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -449,6 +482,9 @@ const styles = StyleSheet.create({
   aiOptionIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
   aiOptionLabel: { fontSize: 15, fontWeight: "700", color: colors.text },
   aiOptionSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  // Subject picker
+  subjectPick: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 10, borderRadius: radius.lg, backgroundColor: colors.surface2, marginTop: 8 },
+  subjectPickText: { flex: 1, fontSize: 14.5, fontWeight: "600", color: colors.text, lineHeight: 20 },
   // Prompt sheet
   promptSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: space.lg, gap: 12 },
   promptHelp: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
