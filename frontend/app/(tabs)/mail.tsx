@@ -88,8 +88,15 @@ export default function MailScreen() {
             <TouchableOpacity style={styles.iconBtn} onPress={() => setSearchActive(true)} testID="mail-search-btn">
               <Ionicons name="search" size={20} color={colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.composeFab} onPress={() => router.push("/mail/compose")} testID="compose-fab">
-              <Ionicons name="create" size={22} color="#fff" />
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => { setRefreshing(true); load(searchActive ? search.trim() : undefined); }}
+              testID="mail-refresh-btn"
+              disabled={refreshing}
+            >
+              {refreshing
+                ? <ActivityIndicator color={colors.primary} size="small" />
+                : <Ionicons name="refresh" size={20} color={colors.primary} />}
             </TouchableOpacity>
           </>
         )}
@@ -192,9 +199,18 @@ export default function MailScreen() {
             </View>
           }
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(searchActive ? search.trim() : undefined); }} tintColor={colors.accent} />}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
         />
       )}
+
+      <TouchableOpacity
+        style={styles.floatingCompose}
+        onPress={() => router.push("/mail/compose")}
+        testID="compose-fab"
+        activeOpacity={0.85}
+      >
+        <Ionicons name="create" size={26} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -395,7 +411,22 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   addr: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
   iconBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center" },
-  composeFab: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  floatingCompose: {
+    position: "absolute",
+    right: 20,
+    bottom: 24,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
   searchRow: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface2, borderRadius: radius.pill, paddingHorizontal: 14, gap: 8 },
   searchInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 10 },
   tabs: { flexDirection: "row", gap: 8, paddingHorizontal: space.xl, marginBottom: 8 },
