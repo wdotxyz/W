@@ -46,7 +46,7 @@ export default function AboutScreen() {
           <Row label="Version" value={VERSION} />
           <Row label="Privacy Policy" value="" onPress={() => router.push("/legal/privacy")} testID="about-privacy" />
           <Row label="Terms of Service" value="" onPress={() => router.push("/legal/terms")} testID="about-terms" />
-          <Row label="Website" value="w.xyz" onPress={() => Linking.openURL("https://w.xyz")} testID="about-website" />
+          <Row label="Website" value="wplatforms.xyz" onPress={() => Linking.openURL("https://wplatforms.xyz")} testID="about-website" />
         </View>
 
         <Text style={styles.footer}>© {new Date().getFullYear()} W Platforms — All rights reserved.</Text>
