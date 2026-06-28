@@ -7,7 +7,7 @@ export default function Terms() {
       title="Terms of Service"
       lastUpdated="June 24, 2026"
       testID="terms-screen"
-      intro="Welcome to W. By creating an account or using the app, you agree to these Terms. Please read them carefully."
+      intro="Welcome to W by W Platforms. By creating an account or using the app, you agree to these Terms. Please read them carefully."
       sections={[
         {
           heading: "Eligibility",
