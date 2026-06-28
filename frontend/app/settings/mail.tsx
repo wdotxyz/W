@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
+import { SHOW_GHOST_MAIL_TOGGLE } from "../../src/featureFlags";
 
 export default function MailSettingsScreen() {
   const router = useRouter();
@@ -23,7 +24,9 @@ export default function MailSettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.intro}>Manage everything W Mail — privacy controls, recovery, automations, and your signature.</Text>
         <View style={styles.group}>
-          <Row icon="eye-off" label="Ghost Mail" hint={(user as any)?.ghost_mail_enabled === false ? "Off" : "On"} onPress={() => router.push("/ghost-mail")} testID="row-ghost-mail" />
+          {SHOW_GHOST_MAIL_TOGGLE && (
+            <Row icon="eye-off" label="Ghost Mail" hint={(user as any)?.ghost_mail_enabled === false ? "Off" : "On"} onPress={() => router.push("/ghost-mail")} testID="row-ghost-mail" />
+          )}
           <Row icon="key" label="Recovery email" hint={(user as any)?.recovery_email ? "Verified" : "Not set"} onPress={() => router.push("/recovery-email")} testID="row-recovery-email" />
           <Row icon="paper-plane" label="Auto-reply" hint={(user as any)?.auto_reply?.enabled ? "On" : "Off"} onPress={() => router.push("/auto-reply")} testID="row-auto-reply" />
           <Row icon="mail" label="Email signature" onPress={() => router.push("/signature")} testID="row-signature" />

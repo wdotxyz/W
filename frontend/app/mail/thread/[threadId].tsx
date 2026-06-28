@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  Image, Linking, Platform, Alert,
+  Image, Linking, Platform, Alert, AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
@@ -56,6 +56,15 @@ export default function ThreadView() {
     });
     return unsub;
   }, [navigation, fireClose]);
+
+  // Ghost-Mail also fires when the user backgrounds the app (home, app-switcher,
+  // screen lock) without saving the email first.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "background" || next === "inactive") fireClose();
+    });
+    return () => sub.remove();
+  }, [fireClose]);
 
   const onStar = async () => {
     try {
