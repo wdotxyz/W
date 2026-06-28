@@ -60,19 +60,25 @@ export default function MailScreen() {
     }
   };
 
-  const bulkDelete = () => {
-    Alert.alert(
-      "Delete forever?",
-      `${selected.size} email${selected.size === 1 ? "" : "s"} will be permanently deleted.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => runBulk((id) => api(`/mail/${id}`, { method: "DELETE" }), "deleted"),
-        },
-      ],
-    );
+  const bulkDelete = async () => {
+    const n = selected.size;
+    const message = `${n} email${n === 1 ? "" : "s"} will be permanently deleted.`;
+    // Alert.alert's multi-button dialog does not render on react-native-web,
+    // so we branch to window.confirm there.
+    let ok = false;
+    if (Platform.OS === "web") {
+      // @ts-ignore — confirm is available in browsers
+      ok = typeof window !== "undefined" && window.confirm(`Delete forever?\n\n${message}`);
+    } else {
+      ok = await new Promise<boolean>((resolve) => {
+        Alert.alert("Delete forever?", message, [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+        ]);
+      });
+    }
+    if (!ok) return;
+    await runBulk((id) => api(`/mail/${id}`, { method: "DELETE" }), "deleted");
   };
   const bulkArchive = () => runBulk((id) => api(`/mail/${id}/archive`, { method: "PATCH" }), "archived");
   const allUnread = Array.from(selected).every((id) => {
@@ -134,17 +140,21 @@ export default function MailScreen() {
             </TouchableOpacity>
             <Text style={styles.selCount} testID="bulk-count">{selected.size} selected</Text>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={styles.iconBtn} onPress={bulkToggleRead} disabled={bulkBusy} testID="bulk-read-btn">
-              <Ionicons name={allUnread ? "mail-open" : "mail-unread"} size={20} color={colors.primary} />
-            </TouchableOpacity>
-            {folder !== "spam" && (
+            {folder !== "drafts" && (
+              <TouchableOpacity style={styles.iconBtn} onPress={bulkToggleRead} disabled={bulkBusy} testID="bulk-read-btn">
+                <Ionicons name={allUnread ? "mail-open" : "mail-unread"} size={20} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            {folder !== "spam" && folder !== "drafts" && (
               <TouchableOpacity style={styles.iconBtn} onPress={bulkArchive} disabled={bulkBusy} testID="bulk-archive-btn">
                 <Ionicons name="archive" size={20} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.iconBtn} onPress={bulkSpam} disabled={bulkBusy} testID="bulk-spam-btn">
-              <Ionicons name={folder === "spam" ? "mail" : "warning"} size={20} color={folder === "spam" ? colors.primary : "#D9534F"} />
-            </TouchableOpacity>
+            {folder !== "drafts" && (
+              <TouchableOpacity style={styles.iconBtn} onPress={bulkSpam} disabled={bulkBusy} testID="bulk-spam-btn">
+                <Ionicons name={folder === "spam" ? "mail" : "warning"} size={20} color={folder === "spam" ? colors.primary : "#D9534F"} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.iconBtn} onPress={bulkDelete} disabled={bulkBusy} testID="bulk-delete-btn">
               {bulkBusy ? <ActivityIndicator size="small" color="#D9534F" /> : <Ionicons name="trash" size={20} color="#D9534F" />}
             </TouchableOpacity>
@@ -339,8 +349,8 @@ const MailRow = ({ mail, folder, onPress, onLongPress, onBubblePress, ghostMail,
   const isGhost = folder === "inbox" && ghostMail && !mail.starred;
   const who = folder === "inbox" || folder === "starred" ? (mail.from_name || mail.from_addr) : folder === "drafts" ? `Draft: ${(mail.to_addrs || []).join(", ") || "—"}` : (mail.to_addrs?.join(", ") || "—");
   const preview = (mail.body || "").replace(/\s+/g, " ").slice(0, 90);
-  // Bubble shows on every actionable folder (not drafts since they aren't actionable here)
-  const showBubble = folder !== "drafts";
+  // Bubble only appears while in selection mode (long-press to enter)
+  const showBubble = selectMode;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -357,9 +367,7 @@ const MailRow = ({ mail, folder, onPress, onLongPress, onBubblePress, ghostMail,
           style={[styles.bubble, isSelected && styles.bubbleOn]}
           testID={`select-bubble-${mail.id}`}
         >
-          {isSelected
-            ? <Ionicons name="checkmark" size={14} color="#fff" />
-            : (unread ? <View style={styles.unreadDotInBubble} /> : null)}
+          {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
         </TouchableOpacity>
       ) : (
         <View style={[styles.dot, unread ? { backgroundColor: colors.accent } : { backgroundColor: "transparent" }]} />
