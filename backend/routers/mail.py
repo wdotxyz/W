@@ -580,9 +580,6 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
                 html_content=Content('text/html', html_body),
             )
             msg.reply_to = ReplyTo(from_addr, user.get('name') or from_addr)
-            unsubscribe_url = f'mailto:unsubscribe@{MAIL_DOMAIN}?subject=unsubscribe'
-            msg.add_header(SgHeader('List-Unsubscribe', f'<{unsubscribe_url}>'))
-            msg.add_header(SgHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click'))
             msg.add_header(SgHeader('X-Mailer', 'W Mail/1.0'))
             for addr in record['to_addrs']:
                 msg.add_to(To(addr))

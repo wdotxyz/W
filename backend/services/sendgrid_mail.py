@@ -42,7 +42,6 @@ def send_system_email(
             msg.reply_to = ReplyTo(reply_to)
         msg.add_header(SgHeader('X-Mailer', 'W Mail/1.0'))
         msg.add_header(SgHeader('Auto-Submitted', 'auto-generated'))
-        msg.add_header(SgHeader('List-Unsubscribe', f'<mailto:unsubscribe@{MAIL_DOMAIN}>'))
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         resp = sg.send(msg)
         ok = resp.status_code in (200, 202)

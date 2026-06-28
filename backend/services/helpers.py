@@ -148,9 +148,7 @@ def _text_to_plain(text: str, from_addr: str = '') -> str:
     footer = (
         '\n\n'
         '—\n'
-        'Sent via W — your AI-native messaging & mail (https://w.xyz).\n'
-        f"Reply to this message or write {from_addr or 'us'} directly.\n"
-        f"To unsubscribe, email unsubscribe@{MAIL_DOMAIN} or reply with the word 'unsubscribe'."
+        'Sent via W — your AI-native messaging & mail (https://w.xyz).'
     )
     return body + footer
 
@@ -175,9 +173,7 @@ def _text_to_html(text: str, sender_name: str = '') -> str:
         '<p style="margin-top:28px;padding-top:14px;border-top:1px solid #E2E8F0;'
         'font-size:12px;color:#5B7083">'
         'Sent via <a href="https://w.xyz" style="color:#0A7A90">W</a> — '
-        'your AI-native messaging &amp; mail. '
-        f'To unsubscribe, email <a href="mailto:unsubscribe@{MAIL_DOMAIN}" style="color:#0A7A90">'
-        f'unsubscribe@{MAIL_DOMAIN}</a> or reply with the word "unsubscribe".'
+        'your AI-native messaging &amp; mail.'
         '</p></div></body></html>'
     )
 
