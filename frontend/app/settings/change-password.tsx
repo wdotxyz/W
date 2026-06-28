@@ -173,10 +173,6 @@ export default function ChangePasswordScreen() {
               </>
             )}
           </TouchableOpacity>
-
-          <Text style={styles.foot}>
-            If you forgot your current password, head back to sign-in and tap "Forgot password?" to reset it via email or SMS instead.
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -195,9 +191,9 @@ const styles = StyleSheet.create({
   heroBody: { fontSize: 13, color: colors.textMuted, textAlign: "center", lineHeight: 18, marginTop: 4 },
   field: { gap: 8 },
   label: { fontSize: 12, color: colors.textMuted, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surface2, paddingHorizontal: 14, paddingVertical: Platform.OS === "ios" ? 14 : 6, borderRadius: radius.lg, borderWidth: 1.5, borderColor: "#D6E5EA" },
+  input: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surface2, paddingLeft: 14, paddingRight: 6, paddingVertical: Platform.OS === "ios" ? 14 : 6, borderRadius: radius.lg, borderWidth: 1.5, borderColor: "#D6E5EA" },
   inputText: { flex: 1, fontSize: 16, color: colors.text, fontWeight: "600" },
-  eyeBtn: { padding: 4 },
+  eyeBtn: { padding: 8, marginRight: 2 },
   strengthRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   strengthTrack: { flex: 1, height: 6, backgroundColor: "#E8E8E8", borderRadius: 4, overflow: "hidden" },
   strengthFill: { height: "100%", borderRadius: 4 },
@@ -205,5 +201,4 @@ const styles = StyleSheet.create({
   warn: { color: colors.danger, fontSize: 12, fontWeight: "600" },
   cta: { backgroundColor: colors.primary, borderRadius: radius.xl, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4 },
   ctaText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-  foot: { fontSize: 12, color: colors.textMuted, textAlign: "center", lineHeight: 17 },
 });
