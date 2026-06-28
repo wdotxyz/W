@@ -247,6 +247,7 @@ export default function MailScreen() {
               selectMode={selectMode}
               isSelected={selected.has(item.id)}
               onLongPress={() => toggleSelect(item.id)}
+              onBubblePress={() => toggleSelect(item.id)}
               onPress={() => {
                 if (selectMode) { toggleSelect(item.id); return; }
                 if (folder === "drafts") router.push({ pathname: "/mail/compose", params: { draftId: item.id } });
@@ -333,11 +334,13 @@ const FolderTab = ({ label, icon, active, onPress, testID }: any) => (
   </TouchableOpacity>
 );
 
-const MailRow = ({ mail, folder, onPress, onLongPress, ghostMail, selectMode, isSelected }: any) => {
+const MailRow = ({ mail, folder, onPress, onLongPress, onBubblePress, ghostMail, selectMode, isSelected }: any) => {
   const unread = folder === "inbox" && !mail.read;
   const isGhost = folder === "inbox" && ghostMail && !mail.starred;
   const who = folder === "inbox" || folder === "starred" ? (mail.from_name || mail.from_addr) : folder === "drafts" ? `Draft: ${(mail.to_addrs || []).join(", ") || "—"}` : (mail.to_addrs?.join(", ") || "—");
   const preview = (mail.body || "").replace(/\s+/g, " ").slice(0, 90);
+  // Bubble shows on every actionable folder (not drafts since they aren't actionable here)
+  const showBubble = folder !== "drafts";
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -347,10 +350,17 @@ const MailRow = ({ mail, folder, onPress, onLongPress, ghostMail, selectMode, is
       testID={`mail-row-${mail.id}`}
       activeOpacity={0.7}
     >
-      {selectMode ? (
-        <View style={[styles.bubble, isSelected && styles.bubbleOn]} testID={`select-bubble-${mail.id}`}>
-          {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
-        </View>
+      {showBubble ? (
+        <TouchableOpacity
+          onPress={onBubblePress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={[styles.bubble, isSelected && styles.bubbleOn]}
+          testID={`select-bubble-${mail.id}`}
+        >
+          {isSelected
+            ? <Ionicons name="checkmark" size={14} color="#fff" />
+            : (unread ? <View style={styles.unreadDotInBubble} /> : null)}
+        </TouchableOpacity>
       ) : (
         <View style={[styles.dot, unread ? { backgroundColor: colors.accent } : { backgroundColor: "transparent" }]} />
       )}
@@ -382,7 +392,7 @@ const MailRow = ({ mail, folder, onPress, onLongPress, ghostMail, selectMode, is
 
 // Swipeable wrapper around MailRow. Left swipe = Archive, Right swipe = Star.
 // Disabled when selection mode is active.
-const SwipeableRow = ({ mail, folder, onPress, onLongPress, ghostMail, onAfterAction, selectMode, isSelected }: any) => {
+const SwipeableRow = ({ mail, folder, onPress, onLongPress, onBubblePress, ghostMail, onAfterAction, selectMode, isSelected }: any) => {
   const swipeRef = useRef<Swipeable | null>(null);
 
   const doStar = async () => {
@@ -407,12 +417,12 @@ const SwipeableRow = ({ mail, folder, onPress, onLongPress, ghostMail, onAfterAc
   // Swipes are only meaningful for inbox / starred — for drafts & sent we just render the row.
   // Also disable swipe when in selection mode (gestures would conflict with multi-select).
   if (folder !== "inbox" && folder !== "starred") {
-    return <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />;
+    return <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} onBubblePress={onBubblePress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />;
   }
   if (selectMode) {
     return (
       <View style={{ backgroundColor: colors.surface }}>
-        <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />
+        <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} onBubblePress={onBubblePress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />
       </View>
     );
   }
@@ -455,7 +465,7 @@ const SwipeableRow = ({ mail, folder, onPress, onLongPress, ghostMail, onAfterAc
       overshootFriction={8}
     >
       <View style={{ backgroundColor: colors.surface }}>
-        <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />
+        <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} onBubblePress={onBubblePress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />
       </View>
     </Swipeable>
   );
@@ -532,6 +542,7 @@ const styles = StyleSheet.create({
   rowSelected: { backgroundColor: "#EAF6F8" },
   bubble: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.textMuted, backgroundColor: "transparent", marginTop: 6, alignItems: "center", justifyContent: "center" },
   bubbleOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  unreadDotInBubble: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   floatingCompose: {
     position: "absolute",
     right: 20,
