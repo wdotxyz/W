@@ -316,6 +316,64 @@ async def extract_actions(threads: List[Dict]) -> List[Dict]:
     return cleaned
 
 
+async def ai_classify_email(email: Dict) -> Optional[Dict]:
+    """Classify a single incoming email into one of: inbox | spam | promotions.
+
+    Returns {category, confidence, reason} or None if classification failed.
+    Used by the inbound webhook to auto-route mail. Conservative — defaults to
+    inbox for anything uncertain.
+    """
+    if not EMERGENT_LLM_KEY or not email:
+        return None
+    payload = {
+        'from': f"{email.get('from_name') or ''} <{email.get('from_addr') or ''}>".strip(),
+        'subject': (email.get('subject') or '')[:200],
+        'preview': (email.get('body') or '').replace('\n', ' ')[:600],
+    }
+    system = (
+        "You are a careful email triage assistant. Read ONE email and decide which "
+        "folder it belongs in: 'inbox', 'spam', or 'promotions'.\n\n"
+        "RULES:\n"
+        "- 'spam'        → phishing, scams, fake delivery / billing fraud, crypto "
+        "                  schemes, lookalike domains, sender impersonation, obvious junk.\n"
+        "- 'promotions'  → legitimate but commercial: newsletters, marketing blasts, "
+        "                  product launches, sales/discount/coupon emails, deals, "
+        "                  recommendation digests, referral campaigns, brand updates.\n"
+        "- 'inbox'       → personal mail, transactional (receipts, invoices, account "
+        "                  alerts, OTPs, shipping confirmations), threaded replies, "
+        "                  anything that needs the user's attention.\n\n"
+        "Be conservative. When uncertain, prefer 'inbox'. Return ONLY this JSON:\n"
+        '{"category": "inbox"|"spam"|"promotions", "confidence": 0.0-1.0, "reason": "<short>"}'
+    )
+    prompt = f"Classify this email:\n\n{json.dumps(payload, ensure_ascii=False)}"
+    try:
+        raw = await _ask_claude(system, prompt, session_id='w-ai-triage', max_chars_in=4000)
+    except Exception as e:
+        logger.error(f'ai_classify_email failed: {type(e).__name__}: {str(e)[:120]}')
+        return None
+    if not raw:
+        return None
+    m = re.search(r'\{[\s\S]*\}', raw)
+    if not m:
+        return None
+    try:
+        parsed = json.loads(m.group(0))
+    except Exception:
+        return None
+    cat = str(parsed.get('category') or 'inbox').lower().strip()
+    if cat not in ('inbox', 'spam', 'promotions'):
+        cat = 'inbox'
+    try:
+        conf = float(parsed.get('confidence') or 0.0)
+    except Exception:
+        conf = 0.0
+    return {
+        'category': cat,
+        'confidence': max(0.0, min(1.0, conf)),
+        'reason': str(parsed.get('reason') or '')[:200],
+    }
+
+
 async def ai_spam_check(emails: List[Dict]) -> List[Dict]:
     """Classify a batch of emails as spam or not_spam using Claude.
 

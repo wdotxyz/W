@@ -13,7 +13,7 @@ import { useAuth } from "../../src/auth";
 import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
 
-type Folder = "inbox" | "drafts" | "sent" | "starred" | "spam";
+type Folder = "inbox" | "drafts" | "sent" | "starred" | "spam" | "promotions";
 
 export default function MailScreen() {
   const router = useRouter();
@@ -93,6 +93,8 @@ export default function MailScreen() {
   const bulkSpam = () => {
     if (folder === "spam") {
       runBulk((id) => api(`/mail/${id}/not-spam`, { method: "POST" }), "released");
+    } else if (folder === "promotions") {
+      runBulk((id) => api(`/mail/${id}/not-promotions`, { method: "POST" }), "released");
     } else {
       runBulk((id) => api(`/mail/${id}/spam`, { method: "POST" }), "moved to spam");
     }
@@ -117,7 +119,10 @@ export default function MailScreen() {
 
   useEffect(() => {
     return subscribe((m: any) => {
-      if (folder === "inbox" && !searchActive && (m.type === "new_email" || m.type === "mail_deleted")) load();
+      if (!searchActive && (m.type === "new_email" || m.type === "mail_deleted" || m.type === "mail_triaged")) {
+        // Refresh whichever folder is currently visible
+        load();
+      }
     });
   }, [subscribe, folder, load, searchActive]);
 
@@ -145,14 +150,18 @@ export default function MailScreen() {
                 <Ionicons name={allUnread ? "mail-open" : "mail-unread"} size={20} color={colors.primary} />
               </TouchableOpacity>
             )}
-            {folder !== "spam" && folder !== "drafts" && (
+            {folder !== "spam" && folder !== "drafts" && folder !== "promotions" && (
               <TouchableOpacity style={styles.iconBtn} onPress={bulkArchive} disabled={bulkBusy} testID="bulk-archive-btn">
                 <Ionicons name="archive" size={20} color={colors.primary} />
               </TouchableOpacity>
             )}
             {folder !== "drafts" && (
               <TouchableOpacity style={styles.iconBtn} onPress={bulkSpam} disabled={bulkBusy} testID="bulk-spam-btn">
-                <Ionicons name={folder === "spam" ? "mail" : "warning"} size={20} color={folder === "spam" ? colors.primary : "#D9534F"} />
+                <Ionicons
+                  name={(folder === "spam" || folder === "promotions") ? "mail" : "warning"}
+                  size={20}
+                  color={(folder === "spam" || folder === "promotions") ? colors.primary : "#D9534F"}
+                />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.iconBtn} onPress={bulkDelete} disabled={bulkBusy} testID="bulk-delete-btn">
@@ -211,35 +220,11 @@ export default function MailScreen() {
           >
             <FolderTab icon="mail" label="Inbox" active={folder === "inbox"} onPress={() => setFolder("inbox")} testID="mail-tab-inbox" />
             <FolderTab icon="star" label="Starred" active={folder === "starred"} onPress={() => setFolder("starred")} testID="mail-tab-starred" />
+            <FolderTab icon="pricetag" label="Promos" active={folder === "promotions"} onPress={() => setFolder("promotions")} testID="mail-tab-promotions" />
             <FolderTab icon="document-text" label="Drafts" active={folder === "drafts"} onPress={() => setFolder("drafts")} testID="mail-tab-drafts" />
             <FolderTab icon="send" label="Sent" active={folder === "sent"} onPress={() => setFolder("sent")} testID="mail-tab-sent" />
             <FolderTab icon="warning" label="Spam" active={folder === "spam"} onPress={() => setFolder("spam")} testID="mail-tab-spam" />
           </ScrollView>
-          {(folder === "inbox" || folder === "spam") && (
-            <TouchableOpacity
-              onPress={async () => {
-                try {
-                  const endpoint = folder === "spam" ? "/ai/verify-spam" : "/ai/scan-inbox-spam";
-                  const res: any = await api(endpoint, { method: "POST" });
-                  const verb = folder === "spam" ? "released back to Inbox" : "moved to Spam";
-                  const count = folder === "spam" ? res?.released : res?.moved;
-                  Alert.alert(
-                    "AI scan complete",
-                    count ? `${count} email${count === 1 ? "" : "s"} ${verb}.` : `No changes — scanned ${res?.scanned || 0} email${res?.scanned === 1 ? "" : "s"}.`,
-                  );
-                  load();
-                } catch (e: any) {
-                  Alert.alert("Scan failed", e?.message || "Please try again.");
-                }
-              }}
-              style={styles.aiScanBtn}
-              testID="ai-spam-scan-btn"
-              activeOpacity={0.85}
-            >
-              <Ionicons name="sparkles" size={14} color="#fff" />
-              <Text style={styles.aiScanText}>{folder === "spam" ? "Verify" : "Scan"}</Text>
-            </TouchableOpacity>
-          )}
         </View>
       )}
 
@@ -277,6 +262,7 @@ export default function MailScreen() {
                     : folder === "starred" ? "star-outline"
                     : folder === "drafts" ? "document-text-outline"
                     : folder === "spam" ? "warning-outline"
+                    : folder === "promotions" ? "pricetag-outline"
                     : "send-outline"
                 }
                 size={48}
@@ -288,6 +274,7 @@ export default function MailScreen() {
                   : folder === "starred" ? "Nothing saved yet"
                   : folder === "drafts" ? "No drafts"
                   : folder === "spam" ? "No spam — nice"
+                  : folder === "promotions" ? "No promos yet"
                   : "No sent mail"}
               </Text>
               {!searchActive && (
@@ -296,7 +283,8 @@ export default function MailScreen() {
                     ? `Send emails to ${user.email_address} from any provider.`
                     : folder === "starred" ? "Open a thread and tap Save to keep it forever."
                     : folder === "drafts" ? "Drafts you save while composing will appear here."
-                    : folder === "spam" ? "Tap Verify to have AI double-check the spam folder for false positives."
+                    : folder === "spam" ? "W AI auto-routes obvious junk here as it arrives."
+                    : folder === "promotions" ? "Newsletters, marketing & deals land here automatically."
                     : "Tap the pencil to compose."}
                 </Text>
               )}

@@ -1,4 +1,5 @@
 """W Mail: handle/domain management, mailbox CRUD, compose, inbound webhook."""
+import asyncio
 import base64
 import inspect
 import json
@@ -22,7 +23,7 @@ from services.helpers import (
     _text_to_plain, _user_tier, _validate_handle,
 )
 from services.sendgrid_mail import send_system_email
-from services.ai_assist import ai_compose_reply
+from services.ai_assist import ai_classify_email, ai_compose_reply
 
 router = APIRouter()
 
@@ -229,6 +230,42 @@ async def mark_mail_not_spam(mail_id: str, user=Depends(get_current_user)):
     )
     if res.matched_count == 0:
         raise HTTPException(404, 'Email not found in spam.')
+    return {'ok': True, 'mail_id': mail_id, 'folder': 'inbox'}
+
+
+@router.get('/mail/promotions')
+async def mail_promotions(user=Depends(get_current_user)):
+    """Promotions folder — newsletters, marketing, deal emails auto-routed by AI."""
+    addrs = _addrs_for(user)
+    if not addrs:
+        return []
+    q = {'to_addrs': {'$in': addrs}, 'folder': 'promotions'}
+    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return msgs
+
+
+@router.post('/mail/{mail_id}/promotions')
+async def mark_mail_promotions(mail_id: str, user=Depends(get_current_user)):
+    addrs = _addrs_for(user)
+    res = await db.emails.update_one(
+        {'id': mail_id, 'to_addrs': {'$in': addrs or [None]}},
+        {'$set': {'folder': 'promotions', 'promotions_marked_at': now_iso(), 'starred': False}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, 'Email not found.')
+    return {'ok': True, 'mail_id': mail_id, 'folder': 'promotions'}
+
+
+@router.post('/mail/{mail_id}/not-promotions')
+async def mark_mail_not_promotions(mail_id: str, user=Depends(get_current_user)):
+    """Move a promotions-flagged email back to the inbox."""
+    addrs = _addrs_for(user)
+    res = await db.emails.update_one(
+        {'id': mail_id, 'folder': 'promotions', 'to_addrs': {'$in': addrs or [None]}},
+        {'$set': {'folder': 'inbox'}, '$unset': {'promotions_marked_at': '', 'promotions_reason': ''}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, 'Email not found in promotions.')
     return {'ok': True, 'mail_id': mail_id, 'folder': 'inbox'}
 
 
@@ -724,11 +761,44 @@ async def mail_inbound(request: Request):
         await db.emails.insert_one(dict(rec))
         stored += 1
         await ws_manager.send_to_user(owner['id'], {'type': 'new_email', 'email': rec})
+        # Async triage: classify into spam / promotions / inbox without
+        # blocking the SendGrid webhook (which has a strict timeout).
+        asyncio.create_task(_triage_inbound(rec, owner['id']))
         # Optional out-of-office auto-reply
         await _maybe_send_auto_reply(owner, sender, subject, in_reply_to=msg_id,
                                        incoming_body=(text or _strip_html(html)))
 
     return {'ok': True, 'stored': stored}
+
+
+async def _triage_inbound(rec: dict, owner_id: str) -> None:
+    """Background task: ask Claude to classify a freshly-received email and
+    move it to spam/promotions if applicable. Always best-effort."""
+    try:
+        result = await ai_classify_email(rec)
+        if not result:
+            return
+        cat = result.get('category')
+        if cat not in ('spam', 'promotions'):
+            return
+        upd: dict = {'folder': cat, 'ai_triage': result}
+        if cat == 'spam':
+            upd['spam_marked_at'] = now_iso()
+            upd['spam_reason'] = result.get('reason') or ''
+            upd['starred'] = False
+        else:  # promotions
+            upd['promotions_marked_at'] = now_iso()
+            upd['promotions_reason'] = result.get('reason') or ''
+        await db.emails.update_one({'id': rec['id']}, {'$set': upd})
+        # Tell the client to refresh its lists so the new email no longer
+        # sits in the inbox view that was just opened.
+        await ws_manager.send_to_user(owner_id, {
+            'type': 'mail_triaged',
+            'mail_id': rec['id'],
+            'folder': cat,
+        })
+    except Exception as e:
+        logger.warning(f'inbound triage failed for {rec.get("id")}: {type(e).__name__}: {str(e)[:120]}')
 
 
 async def _maybe_send_auto_reply(owner: dict, sender: str, original_subject: str,
