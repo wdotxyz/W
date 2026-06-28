@@ -156,7 +156,7 @@ export default function MailScreen() {
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.iconBtn} onPress={bulkDelete} disabled={bulkBusy} testID="bulk-delete-btn">
-              {bulkBusy ? <ActivityIndicator size="small" color="#D9534F" /> : <Ionicons name="trash" size={20} color="#D9534F" />}
+              {bulkBusy ? <ActivityIndicator size="small" color="#D9534F" /> : <Ionicons name="trash-bin" size={22} color="#D9534F" />}
             </TouchableOpacity>
           </>
         ) : searchActive ? (
