@@ -29,7 +29,7 @@ export default function TwoFactorScreen() {
       });
       if (res?.token) {
         await applySession(res.token, res.user);
-        router.replace("/(tabs)/updates");
+        router.replace("/(tabs)/mail");
       } else {
         Alert.alert("Couldn't verify", "Please try again.");
       }

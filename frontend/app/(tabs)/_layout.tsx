@@ -25,17 +25,17 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="updates"
-        options={{
-          title: "Watch",
-          tabBarIcon: ({ color, size }) => <Ionicons name="play-circle" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
         name="mail"
         options={{
           title: "Inbox",
           tabBarIcon: ({ color, size }) => <Ionicons name="mail" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="updates"
+        options={{
+          title: "Watch",
+          tabBarIcon: ({ color, size }) => <Ionicons name="play-circle" size={size} color={color} />,
         }}
       />
       <Tabs.Screen

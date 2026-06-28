@@ -69,7 +69,7 @@ export default function ForgotPasswordScreen() {
       });
       await applySession(res.token, res.user);
       Alert.alert("Password reset", "You're signed in with your new password.");
-      router.replace("/(tabs)/updates");
+      router.replace("/(tabs)/mail");
     } catch (e: any) {
       Alert.alert("Couldn't reset", "The code or password is invalid. Try again.");
     } finally {
