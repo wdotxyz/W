@@ -42,17 +42,10 @@ export default function SettingsScreen() {
             <Row icon="globe" label="Custom domain" onPress={() => router.push("/domain-setup")} testID="row-domain" />
           ) : null}
           <Row icon="notifications" label="Notifications" onPress={() => router.push("/notification-settings")} testID="row-notifications" />
-          <Row icon="sparkles" label="AI Assistant" onPress={() => router.push("/actions")} testID="row-ai-assistant" />
-          <Row icon="color-palette" label="Theme" />
           <Row icon="help-circle" label="Help Center" onPress={() => router.push("/help")} testID="row-help" />
           <Row icon="mail" label="Mail Settings" onPress={() => router.push("/settings/mail")} testID="row-mail-section" />
           <Row icon="person-circle" label="Account" onPress={() => router.push("/settings/account")} testID="row-account-section" />
         </View>
-
-        <TouchableOpacity onPress={onSignOut} style={styles.signOut} testID="signout-btn">
-          <Ionicons name="log-out-outline" size={20} color={colors.danger} />
-          <Text style={styles.signOutText}>Sign out</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

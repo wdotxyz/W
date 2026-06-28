@@ -72,7 +72,6 @@ export default function AccountSettingsScreen() {
         <View style={styles.group}>
           <Row icon="shield-checkmark" label="Two-step verification" onPress={() => router.push("/two-factor-settings")} testID="row-2fa" />
           <Row icon="lock-closed" label="Change password" onPress={() => router.push("/settings/change-password")} testID="row-change-password" />
-          <Row icon="key" label="Passkeys" onPress={() => router.push("/settings/passkeys")} testID="row-passkeys" />
           <Row icon="call" label="Change phone number" onPress={() => router.push("/settings/change-phone")} testID="row-change-phone" />
           <Row icon="information-circle" label="About W" onPress={() => router.push("/about")} testID="row-about" />
           {(user as any)?.is_support ? (
@@ -80,6 +79,11 @@ export default function AccountSettingsScreen() {
           ) : null}
           <Row icon="pause-circle-outline" label="Deactivate account" onPress={openDeactivateChooser} testID="row-deactivate" />
         </View>
+
+        <TouchableOpacity onPress={signOut} style={styles.signOut} testID="signout-btn" activeOpacity={0.75}>
+          <Ionicons name="log-out-outline" size={20} color={colors.danger} />
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* CHOOSER OVERLAY — inline (no RN Modal so it never freezes on web) */}
@@ -148,6 +152,8 @@ const styles = StyleSheet.create({
   scroll: { padding: space.xl, gap: 14 },
   intro: { fontSize: 13.5, color: colors.textMuted, lineHeight: 19 },
   group: { backgroundColor: colors.surface2, borderRadius: radius.xl, overflow: "hidden" },
+  signOut: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.surface2, borderRadius: radius.xl, paddingVertical: 14, marginTop: 6 },
+  signOutText: { color: colors.danger, fontWeight: "700", fontSize: 15 },
   rowItem: { flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12 },
   rowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
   rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: "600" },
