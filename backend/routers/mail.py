@@ -520,6 +520,12 @@ async def mail_mark_read(mail_id: str, user=Depends(get_current_user)):
     return {'ok': True}
 
 
+@router.patch('/mail/{mail_id}/unread')
+async def mail_mark_unread(mail_id: str, user=Depends(get_current_user)):
+    await db.emails.update_one({'id': mail_id}, {'$set': {'read': False}})
+    return {'ok': True}
+
+
 @router.post('/mail/compose')
 async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if not user.get('email_address'):

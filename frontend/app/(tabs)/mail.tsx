@@ -24,9 +24,73 @@ export default function MailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [searchActive, setSearchActive] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const debounceRef = useRef<any>(null);
+  const selectMode = selected.size > 0;
 
   const hasHandle = !!user?.email_address;
+
+  const clearSelection = () => setSelected(new Set());
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const runBulk = async (
+    fn: (id: string) => Promise<any>,
+    successLabel: string,
+  ) => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(ids.map(fn));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed) Alert.alert("Some actions failed", `${ids.length - failed} of ${ids.length} ${successLabel}.`);
+    } catch (e: any) {
+      Alert.alert("Action failed", e?.message || "Please try again.");
+    } finally {
+      setBulkBusy(false);
+      clearSelection();
+      load(searchActive ? search.trim() : undefined);
+    }
+  };
+
+  const bulkDelete = () => {
+    Alert.alert(
+      "Delete forever?",
+      `${selected.size} email${selected.size === 1 ? "" : "s"} will be permanently deleted.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => runBulk((id) => api(`/mail/${id}`, { method: "DELETE" }), "deleted"),
+        },
+      ],
+    );
+  };
+  const bulkArchive = () => runBulk((id) => api(`/mail/${id}/archive`, { method: "PATCH" }), "archived");
+  const allUnread = Array.from(selected).every((id) => {
+    const m = emails.find((e) => e.id === id);
+    return m && !m.read;
+  });
+  const bulkToggleRead = () =>
+    runBulk(
+      (id) => api(`/mail/${id}/${allUnread ? "read" : "unread"}`, { method: "PATCH" }),
+      allUnread ? "marked read" : "marked unread",
+    );
+  const bulkSpam = () => {
+    if (folder === "spam") {
+      runBulk((id) => api(`/mail/${id}/not-spam`, { method: "POST" }), "released");
+    } else {
+      runBulk((id) => api(`/mail/${id}/spam`, { method: "POST" }), "moved to spam");
+    }
+  };
 
   const load = useCallback(async (q?: string) => {
     if (!hasHandle) { setLoading(false); return; }
@@ -41,6 +105,9 @@ export default function MailScreen() {
   }, [folder, hasHandle]);
 
   useFocusEffect(useCallback(() => { if (!searchActive) load(); }, [load, searchActive]));
+
+  // Clear selection when folder or search context changes
+  useEffect(() => { clearSelection(); }, [folder, searchActive]);
 
   useEffect(() => {
     return subscribe((m: any) => {
@@ -59,8 +126,30 @@ export default function MailScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.header}>
-        {searchActive ? (
+      <View style={[styles.header, selectMode && styles.headerSelect]}>
+        {selectMode ? (
+          <>
+            <TouchableOpacity onPress={clearSelection} style={styles.iconBtn} testID="bulk-clear-btn">
+              <Ionicons name="close" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.selCount} testID="bulk-count">{selected.size} selected</Text>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity style={styles.iconBtn} onPress={bulkToggleRead} disabled={bulkBusy} testID="bulk-read-btn">
+              <Ionicons name={allUnread ? "mail-open" : "mail-unread"} size={20} color={colors.primary} />
+            </TouchableOpacity>
+            {folder !== "spam" && (
+              <TouchableOpacity style={styles.iconBtn} onPress={bulkArchive} disabled={bulkBusy} testID="bulk-archive-btn">
+                <Ionicons name="archive" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.iconBtn} onPress={bulkSpam} disabled={bulkBusy} testID="bulk-spam-btn">
+              <Ionicons name={folder === "spam" ? "mail" : "warning"} size={20} color={folder === "spam" ? colors.primary : "#D9534F"} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn} onPress={bulkDelete} disabled={bulkBusy} testID="bulk-delete-btn">
+              {bulkBusy ? <ActivityIndicator size="small" color="#D9534F" /> : <Ionicons name="trash" size={20} color="#D9534F" />}
+            </TouchableOpacity>
+          </>
+        ) : searchActive ? (
           <View style={styles.searchRow}>
             <Ionicons name="search" size={18} color={colors.textMuted} />
             <TextInput
@@ -102,7 +191,7 @@ export default function MailScreen() {
         )}
       </View>
 
-      {!searchActive && (
+      {!searchActive && !selectMode && (
         <View style={styles.tabsRow}>
           <ScrollView
             horizontal
@@ -155,7 +244,11 @@ export default function MailScreen() {
               mail={item}
               folder={folder}
               ghostMail={(user as any)?.ghost_mail_enabled !== false}
+              selectMode={selectMode}
+              isSelected={selected.has(item.id)}
+              onLongPress={() => toggleSelect(item.id)}
               onPress={() => {
+                if (selectMode) { toggleSelect(item.id); return; }
                 if (folder === "drafts") router.push({ pathname: "/mail/compose", params: { draftId: item.id } });
                 else if (item.thread_id) router.push(`/mail/thread/${item.thread_id}`);
                 else router.push(`/mail/${item.id}`);
@@ -240,14 +333,27 @@ const FolderTab = ({ label, icon, active, onPress, testID }: any) => (
   </TouchableOpacity>
 );
 
-const MailRow = ({ mail, folder, onPress, ghostMail }: any) => {
+const MailRow = ({ mail, folder, onPress, onLongPress, ghostMail, selectMode, isSelected }: any) => {
   const unread = folder === "inbox" && !mail.read;
   const isGhost = folder === "inbox" && ghostMail && !mail.starred;
   const who = folder === "inbox" || folder === "starred" ? (mail.from_name || mail.from_addr) : folder === "drafts" ? `Draft: ${(mail.to_addrs || []).join(", ") || "—"}` : (mail.to_addrs?.join(", ") || "—");
   const preview = (mail.body || "").replace(/\s+/g, " ").slice(0, 90);
   return (
-    <TouchableOpacity onPress={onPress} style={styles.row} testID={`mail-row-${mail.id}`} activeOpacity={0.7}>
-      <View style={[styles.dot, unread ? { backgroundColor: colors.accent } : { backgroundColor: "transparent" }]} />
+    <TouchableOpacity
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={250}
+      style={[styles.row, isSelected && styles.rowSelected]}
+      testID={`mail-row-${mail.id}`}
+      activeOpacity={0.7}
+    >
+      {selectMode ? (
+        <View style={[styles.bubble, isSelected && styles.bubbleOn]} testID={`select-bubble-${mail.id}`}>
+          {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+        </View>
+      ) : (
+        <View style={[styles.dot, unread ? { backgroundColor: colors.accent } : { backgroundColor: "transparent" }]} />
+      )}
       <View style={{ flex: 1 }}>
         <View style={styles.rowTop}>
           <Text style={[styles.who, unread && { fontWeight: "800" }]} numberOfLines={1}>{who}</Text>
@@ -275,7 +381,8 @@ const MailRow = ({ mail, folder, onPress, ghostMail }: any) => {
 };
 
 // Swipeable wrapper around MailRow. Left swipe = Archive, Right swipe = Star.
-const SwipeableRow = ({ mail, folder, onPress, ghostMail, onAfterAction }: any) => {
+// Disabled when selection mode is active.
+const SwipeableRow = ({ mail, folder, onPress, onLongPress, ghostMail, onAfterAction, selectMode, isSelected }: any) => {
   const swipeRef = useRef<Swipeable | null>(null);
 
   const doStar = async () => {
@@ -298,8 +405,16 @@ const SwipeableRow = ({ mail, folder, onPress, ghostMail, onAfterAction }: any) 
   };
 
   // Swipes are only meaningful for inbox / starred — for drafts & sent we just render the row.
+  // Also disable swipe when in selection mode (gestures would conflict with multi-select).
   if (folder !== "inbox" && folder !== "starred") {
-    return <MailRow mail={mail} folder={folder} onPress={onPress} ghostMail={ghostMail} />;
+    return <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />;
+  }
+  if (selectMode) {
+    return (
+      <View style={{ backgroundColor: colors.surface }}>
+        <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />
+      </View>
+    );
   }
 
   const renderRight = (progress: Animated.AnimatedInterpolation<number>) => {
@@ -340,7 +455,7 @@ const SwipeableRow = ({ mail, folder, onPress, ghostMail, onAfterAction }: any) 
       overshootFriction={8}
     >
       <View style={{ backgroundColor: colors.surface }}>
-        <MailRow mail={mail} folder={folder} onPress={onPress} ghostMail={ghostMail} />
+        <MailRow mail={mail} folder={folder} onPress={onPress} onLongPress={onLongPress} ghostMail={ghostMail} selectMode={selectMode} isSelected={isSelected} />
       </View>
     </Swipeable>
   );
@@ -411,6 +526,12 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   addr: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
   iconBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center" },
+  // Selection mode
+  headerSelect: { backgroundColor: "#EAF6F8", borderBottomWidth: 0 },
+  selCount: { marginLeft: 4, fontSize: 16, fontWeight: "700", color: colors.primary },
+  rowSelected: { backgroundColor: "#EAF6F8" },
+  bubble: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.textMuted, backgroundColor: "transparent", marginTop: 6, alignItems: "center", justifyContent: "center" },
+  bubbleOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   floatingCompose: {
     position: "absolute",
     right: 20,
