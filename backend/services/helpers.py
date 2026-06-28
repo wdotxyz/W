@@ -180,3 +180,71 @@ def _sanitize_html(s: str) -> str:
     out = re.sub(r'(href|src)\s*=\s*"\s*javascript:[^"]*"', r'\1="#"', out, flags=re.I)
     out = re.sub(r"(href|src)\s*=\s*'\s*javascript:[^']*'", r"\1='#'", out, flags=re.I)
     return out
+
+
+# Domains/path fragments that are almost exclusively used for open-tracking.
+_TRACKER_HOST_PATTERNS = (
+    'mailchimp.com/track', 'list-manage.com/track', 'click.mlsend.com',
+    'mailgun.org', 'sg-mail.com', 'sendgrid.net', 'click.sendgrid.com',
+    'mc.mailchimp.com', 'mlsnd.com', 'sparkpostmail',
+    'analytics.google.com', 'google-analytics.com',
+    'doubleclick.net', 'facebook.com/tr',
+    'mandrillapp.com/track', 'mkto-', 'mktoresp.com',
+    'hubspotemail.net', 'hubspot.com/__ptq.gif',
+    'klaviyo.com/oa', 'klclick.com',
+    'beehiiv.com/pixel', 'substack.com/o/pixel',
+    'pingdom.net', 'amplitude.com',
+    'omsnd.com', 'campaign-archive.com',
+    'cmail19', 'cmail20',  # createsend / campaign monitor open tracker
+    'rsgsv.net', 'mlsend.com',
+    'litmusemailanalytics.com', 'emltrk.com',
+    'mp.streamtimeapp.com', 'app.mention.com/track',
+)
+
+_IMG_TAG_RE = re.compile(r'<img\b([^>]*)>', re.I | re.S)
+_BG_IMAGE_RE = re.compile(r'background(?:-image)?\s*:\s*url\(([^)]+)\)', re.I)
+
+
+def _img_is_tracker(attrs: str) -> bool:
+    """Return True if the parsed <img ...> attribute string looks like a tracker."""
+    a = (attrs or '').lower()
+    # Explicit 1×1 / 0×0 size beacons
+    if re.search(r'\bwidth\s*=\s*["\']?[01]["\']?', a) and re.search(r'\bheight\s*=\s*["\']?[01]["\']?', a):
+        return True
+    # Hidden via CSS
+    if re.search(r'(display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?\b)', a):
+        return True
+    # Hosts known to be open-tracking beacons
+    src_m = re.search(r'\bsrc\s*=\s*["\']([^"\']+)["\']', a)
+    if src_m:
+        url = src_m.group(1).lower()
+        if any(p in url for p in _TRACKER_HOST_PATTERNS):
+            return True
+        # Generic pixel paths: filenames or query-strings that look like beacons
+        if re.search(r'/(open|pixel|beacon|track(?:er)?|track\.gif|spacer|trans(?:parent)?\.gif|1x1\.png|spy\.gif)(?:[?/]|$)', url):
+            return True
+    return False
+
+
+def _strip_trackers(html: str):
+    """Remove tracking pixels from inbound HTML. Returns (cleaned_html, count)."""
+    if not html:
+        return html, 0
+    blocked = [0]
+
+    def repl(m):
+        if _img_is_tracker(m.group(1) or ''):
+            blocked[0] += 1
+            return ''
+        return m.group(0)
+
+    cleaned = _IMG_TAG_RE.sub(repl, html)
+    # Strip background-image:url(...) from inline style attrs pointing at tracker hosts
+    def bg_repl(m):
+        url = (m.group(1) or '').strip(' \'"').lower()
+        if any(p in url for p in _TRACKER_HOST_PATTERNS):
+            blocked[0] += 1
+            return ''
+        return m.group(0)
+    cleaned = _BG_IMAGE_RE.sub(bg_repl, cleaned)
+    return cleaned, blocked[0]

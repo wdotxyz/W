@@ -209,17 +209,26 @@ export default function Compose() {
     setSending(true);
     clearTimeout(autoSaveRef.current);
     try {
+      const DEFER_S = 15;
       const res = await api<any>("/mail/compose", {
         method: "POST",
         body: JSON.stringify({
           to: toList, subject: subject.trim(), body, attachments: atts,
           draft_id: draftId, in_reply_to: params.inReplyTo, thread_id: params.threadId,
           include_signature: includeSignature,
+          defer_seconds: DEFER_S,
         }),
       });
-      if (res.delivery_status === "sent") Alert.alert("Sent ✓", "Your email is on its way.");
-      else if (res.delivery_status === "saved_no_provider") Alert.alert("Saved to Sent", "SendGrid isn't configured yet — your email is in the Sent folder.");
-      else Alert.alert("Delivery issue", res.delivery_error || res.delivery_status);
+      // Persist a pending undo handle for the inbox snackbar
+      try {
+        const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+        await AsyncStorage.setItem("pendingUndo", JSON.stringify({
+          id: res.id,
+          expiresAt: Date.now() + DEFER_S * 1000,
+          to: toList,
+          subject: subject.trim() || "(no subject)",
+        }));
+      } catch {}
       router.back();
     } catch (e: any) { Alert.alert("Couldn't send", e.message); }
     finally { setSending(false); }

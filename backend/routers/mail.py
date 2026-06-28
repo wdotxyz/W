@@ -19,8 +19,8 @@ from core.ws import ws_manager
 from models.schemas import ClaimHandleReq, ComposeMailReq, DraftReq, SnoozeReq
 from services.helpers import (
     _approx_b64_bytes, _check_and_bump_storage, _handle_tier, _is_reserved_or_profane,
-    _is_valid_domain, _sanitize_html, _slugify_domain, _strip_html, _text_to_html,
-    _text_to_plain, _user_tier, _validate_handle,
+    _is_valid_domain, _sanitize_html, _slugify_domain, _strip_html, _strip_trackers,
+    _text_to_html, _text_to_plain, _user_tier, _validate_handle,
 )
 from services.sendgrid_mail import send_system_email
 from services.ai_assist import ai_classify_email, ai_compose_reply
@@ -585,6 +585,56 @@ async def mail_mark_unread(mail_id: str, user=Depends(get_current_user)):
     return {'ok': True}
 
 
+def _build_sendgrid_message(record: dict, user: dict, attachments: list):
+    """Build a SendGrid Mail object from a stored record. Returns the Mail or None."""
+    if not SENDGRID_API_KEY:
+        return None
+    from sendgrid.helpers.mail import Mail, Email, To, ReplyTo, Content, Attachment, FileContent, FileName, FileType, Disposition, Header as SgHeader
+    from_addr = record['from_addr']
+    body_out = record.get('body') or ' '
+    plain_body = _text_to_plain(body_out, from_addr)
+    html_body = _text_to_html(body_out, user.get('name') or from_addr)
+    msg = Mail(
+        from_email=Email(from_addr, user.get('name') or from_addr),
+        subject=record.get('subject') or '(no subject)',
+        plain_text_content=Content('text/plain', plain_body),
+        html_content=Content('text/html', html_body),
+    )
+    msg.reply_to = ReplyTo(from_addr, user.get('name') or from_addr)
+    msg.add_header(SgHeader('X-Mailer', 'W Mail/1.0'))
+    for addr in record['to_addrs']:
+        msg.add_to(To(addr))
+    for a in (attachments or []):
+        if a.get('content_b64') and a.get('filename'):
+            att = Attachment(
+                FileContent(a['content_b64']),
+                FileName(a['filename']),
+                FileType(a.get('type') or 'application/octet-stream'),
+                Disposition('attachment'),
+            )
+            msg.add_attachment(att)
+    return msg
+
+
+async def _send_record_now(record: dict, user: dict) -> dict:
+    """Actually transmit a queued/scheduled email via SendGrid. Mutates and returns the record."""
+    if not SENDGRID_API_KEY:
+        record['delivery_status'] = 'saved_no_provider'
+        record['delivery_error'] = 'SendGrid API key not configured yet; email saved to Sent folder only.'
+        return record
+    try:
+        from sendgrid import SendGridAPIClient
+        msg = _build_sendgrid_message(record, user, record.get('attachments') or [])
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        resp = sg.send(msg)
+        record['delivery_status'] = 'sent' if resp.status_code in (200, 202) else f'error_{resp.status_code}'
+    except Exception as e:
+        logger.exception('SendGrid send failed')
+        record['delivery_status'] = 'error'
+        record['delivery_error'] = str(e)[:300]
+    return record
+
+
 @router.post('/mail/compose')
 async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if not user.get('email_address'):
@@ -611,10 +661,18 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if sig and req.include_signature and '-- ' not in body_out:
         body_out = f'{body_out}\n\n-- \n{sig}'
 
+    # Decide whether this is an immediate send, a deferred Undo-window send,
+    # or a true scheduled "send later" message.
+    scheduled_at: Optional[str] = None
+    if req.send_at:
+        scheduled_at = req.send_at
+    elif req.defer_seconds and req.defer_seconds > 0:
+        scheduled_at = (_utcnow() + timedelta(seconds=int(req.defer_seconds))).isoformat()
+
     record = {
         'id': mail_id,
         'owner_id': user['id'],
-        'folder': 'sent',
+        'folder': 'scheduled' if scheduled_at else 'sent',
         'from_addr': from_addr,
         'from_name': user.get('name') or from_addr,
         'from_tier': _user_tier(user),
@@ -625,53 +683,50 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
         'attachments': req.attachments or [],
         'read': True,
         'created_at': now_iso(),
-        'delivery_status': 'queued',
+        'delivery_status': 'scheduled' if scheduled_at else 'queued',
         'delivery_error': None,
         'message_id': message_id,
         'in_reply_to': req.in_reply_to,
         'thread_id': thread_id,
+        'scheduled_at': scheduled_at,
     }
 
-    if SENDGRID_API_KEY:
-        try:
-            from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail, Email, To, ReplyTo, Content, Attachment, FileContent, FileName, FileType, Disposition, Header as SgHeader
-            plain_body = _text_to_plain(body_out or ' ', from_addr)
-            html_body = _text_to_html(body_out or ' ', user.get('name') or from_addr)
-            msg = Mail(
-                from_email=Email(from_addr, user.get('name') or from_addr),
-                subject=req.subject or '(no subject)',
-                plain_text_content=Content('text/plain', plain_body),
-                html_content=Content('text/html', html_body),
-            )
-            msg.reply_to = ReplyTo(from_addr, user.get('name') or from_addr)
-            msg.add_header(SgHeader('X-Mailer', 'W Mail/1.0'))
-            for addr in record['to_addrs']:
-                msg.add_to(To(addr))
-            for a in (req.attachments or []):
-                if a.get('content_b64') and a.get('filename'):
-                    att = Attachment(
-                        FileContent(a['content_b64']),
-                        FileName(a['filename']),
-                        FileType(a.get('type') or 'application/octet-stream'),
-                        Disposition('attachment'),
-                    )
-                    msg.add_attachment(att)
-            sg = SendGridAPIClient(SENDGRID_API_KEY)
-            resp = sg.send(msg)
-            record['delivery_status'] = 'sent' if resp.status_code in (200, 202) else f'error_{resp.status_code}'
-        except Exception as e:
-            logger.exception('SendGrid send failed')
-            record['delivery_status'] = 'error'
-            record['delivery_error'] = str(e)[:300]
-    else:
-        record['delivery_status'] = 'saved_no_provider'
-        record['delivery_error'] = 'SendGrid API key not configured yet; email saved to Sent folder only.'
+    if not scheduled_at:
+        await _send_record_now(record, user)
 
     await db.emails.insert_one(dict(record))
     if req.draft_id:
         await db.emails.delete_one({'id': req.draft_id, 'owner_id': user['id'], 'folder': 'drafts'})
     return record
+
+
+@router.get('/mail/scheduled')
+async def mail_scheduled(user=Depends(get_current_user)):
+    """All messages queued for deferred / scheduled send."""
+    msgs = await db.emails.find(
+        {'owner_id': user['id'], 'folder': 'scheduled'},
+        {'_id': 0},
+    ).sort('scheduled_at', 1).to_list(500)
+    return msgs
+
+
+@router.post('/mail/{mail_id}/cancel-send')
+async def mail_cancel_send(mail_id: str, user=Depends(get_current_user)):
+    """Cancel a scheduled / deferred send and turn it back into a draft."""
+    rec = await db.emails.find_one(
+        {'id': mail_id, 'owner_id': user['id'], 'folder': 'scheduled'},
+        {'_id': 0},
+    )
+    if not rec:
+        raise HTTPException(404, 'Scheduled email not found (it may have already been sent).')
+    await db.emails.update_one(
+        {'id': mail_id},
+        {
+            '$set': {'folder': 'drafts', 'delivery_status': 'cancelled'},
+            '$unset': {'scheduled_at': '', 'message_id': '', 'thread_id': '', 'in_reply_to': ''},
+        },
+    )
+    return {'ok': True, 'mail_id': mail_id, 'folder': 'drafts'}
 
 
 @router.post('/mail/inbound')
@@ -761,6 +816,7 @@ async def mail_inbound(request: Request):
         owner = await db.users.find_one({'email_address': addr}, {'_id': 0})
         if not owner:
             continue
+        sanitized_html, trackers_blocked = _strip_trackers(_sanitize_html(html))
         rec = {
             'id': str(uuid.uuid4()),
             'owner_id': owner['id'],
@@ -771,7 +827,8 @@ async def mail_inbound(request: Request):
             'to_addrs': to_addrs,
             'subject': subject or '(no subject)',
             'body': text or _strip_html(html),
-            'body_html': _sanitize_html(html),
+            'body_html': sanitized_html,
+            'trackers_blocked': trackers_blocked,
             'attachments': attachments,
             'read': False,
             'created_at': now_iso(),

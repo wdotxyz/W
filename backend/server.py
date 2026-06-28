@@ -99,7 +99,41 @@ async def on_startup():
     await db.emails.create_index('message_id', sparse=True)
     await db.statuses.create_index([('user_id', 1), ('created_at', -1)])
     await db.statuses.create_index('expires_at')
+    await db.emails.create_index('scheduled_at', sparse=True)
+    # Start the scheduled-send sweeper
+    import asyncio
+    asyncio.create_task(_scheduled_send_loop())
     logger.info('W backend started.')
+
+
+async def _scheduled_send_loop() -> None:
+    """Background sweeper: every few seconds, find emails whose scheduled_at
+    is due and dispatch them via SendGrid."""
+    import asyncio
+    from routers.mail import _send_record_now
+    from core.security import _utcnow
+    while True:
+        try:
+            now = _utcnow().isoformat()
+            due_cursor = db.emails.find({'folder': 'scheduled', 'scheduled_at': {'$lte': now}}, {'_id': 0})
+            due = await due_cursor.to_list(50)
+            for rec in due:
+                user = await db.users.find_one({'id': rec.get('owner_id')})
+                if not user:
+                    continue
+                # Move to sent first so a crash doesn't double-send
+                await db.emails.update_one(
+                    {'id': rec['id']},
+                    {'$set': {'folder': 'sent', 'delivery_status': 'queued'}, '$unset': {'scheduled_at': ''}},
+                )
+                await _send_record_now(rec, user)
+                await db.emails.update_one(
+                    {'id': rec['id']},
+                    {'$set': {'delivery_status': rec.get('delivery_status'), 'delivery_error': rec.get('delivery_error')}},
+                )
+        except Exception as e:
+            logger.warning(f'scheduled-send sweep failed: {type(e).__name__}: {str(e)[:120]}')
+        await asyncio.sleep(5)
 
 
 @app.on_event('shutdown')

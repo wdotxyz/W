@@ -4,6 +4,7 @@ import {
   ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert,
   Animated, ScrollView,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -27,6 +28,8 @@ export default function MailScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
+  const [undoState, setUndoState] = useState<{ id: string; expiresAt: number; subject: string } | null>(null);
+  const [undoTick, setUndoTick] = useState(0); // forces re-render for countdown
   const debounceRef = useRef<any>(null);
   const selectMode = selected.size > 0;
 
@@ -117,6 +120,48 @@ export default function MailScreen() {
 
   // Clear selection when folder or search context changes
   useEffect(() => { clearSelection(); }, [folder, searchActive]);
+
+  // Undo Send snackbar: read pending state on focus + tick a countdown every second
+  useFocusEffect(useCallback(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("pendingUndo");
+        if (!raw || !mounted) return;
+        const p = JSON.parse(raw);
+        if (p?.expiresAt && p.expiresAt > Date.now()) setUndoState(p);
+        else await AsyncStorage.removeItem("pendingUndo");
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, []));
+
+  useEffect(() => {
+    if (!undoState) return;
+    const iv = setInterval(() => {
+      if (Date.now() >= undoState.expiresAt) {
+        setUndoState(null);
+        AsyncStorage.removeItem("pendingUndo").catch(() => {});
+        clearInterval(iv);
+        return;
+      }
+      setUndoTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [undoState]);
+
+  const cancelScheduledSend = async () => {
+    if (!undoState) return;
+    const id = undoState.id;
+    setUndoState(null);
+    try { await AsyncStorage.removeItem("pendingUndo"); } catch {}
+    try {
+      await api(`/mail/${id}/cancel-send`, { method: "POST" });
+      Alert.alert("Send cancelled", "Your email has been moved back to Drafts.");
+    } catch (e: any) {
+      Alert.alert("Couldn't undo", e?.message || "It may have already been sent.");
+    }
+  };
 
   useEffect(() => {
     return subscribe((m: any) => {
@@ -310,11 +355,9 @@ export default function MailScreen() {
                   : folder === "promotions" ? "No promos yet"
                   : "No sent mail"}
               </Text>
-              {!searchActive && (
+              {!searchActive && folder !== "inbox" && (
                 <Text style={styles.emptySub}>
-                  {folder === "inbox"
-                    ? `Send emails to ${user.email_address} from any provider.`
-                    : folder === "starred" ? "Open a thread and tap Save to keep it forever."
+                  {folder === "starred" ? "Open a thread and tap Save to keep it forever."
                     : folder === "drafts" ? "Drafts you save while composing will appear here."
                     : folder === "spam" ? "W AI auto-routes obvious junk here as it arrives."
                     : folder === "promotions" ? "Newsletters, marketing & deals land here automatically."
@@ -336,6 +379,22 @@ export default function MailScreen() {
       >
         <Ionicons name="create" size={26} color="#fff" />
       </TouchableOpacity>
+
+      {/* Undo Send snackbar */}
+      {undoState && (() => {
+        const remaining = Math.max(0, Math.ceil((undoState.expiresAt - Date.now()) / 1000));
+        // Re-read undoTick so the ESLint hook deps satisfied and we re-render
+        void undoTick;
+        return (
+          <View style={styles.undoSnack} testID="undo-snackbar">
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.undoText} numberOfLines={1}>Sending in {remaining}s…</Text>
+            <TouchableOpacity onPress={cancelScheduledSend} style={styles.undoBtn} testID="undo-send-btn">
+              <Text style={styles.undoBtnText}>UNDO</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
     </SafeAreaView>
   );
 }
@@ -412,6 +471,12 @@ const MailRow = ({ mail, folder, onPress, onLongPress, onBubblePress, ghostMail,
           <View style={styles.attachRow}>
             <Ionicons name="attach" size={14} color={colors.textMuted} />
             <Text style={styles.attachTxt}>{mail.attachments.length} attachment{mail.attachments.length > 1 ? "s" : ""}</Text>
+          </View>
+        )}
+        {!!mail.trackers_blocked && (
+          <View style={styles.trackerRow}>
+            <Ionicons name="shield-checkmark" size={13} color="#0A7A90" />
+            <Text style={styles.trackerTxt}>{mail.trackers_blocked} tracker{mail.trackers_blocked > 1 ? "s" : ""} blocked</Text>
           </View>
         )}
       </View>
@@ -609,6 +674,29 @@ const styles = StyleSheet.create({
   preview: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   attachRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
   attachTxt: { fontSize: 12, color: colors.textMuted },
+  trackerRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  trackerTxt: { fontSize: 11.5, color: "#0A7A90", fontWeight: "700" },
+  undoSnack: {
+    position: "absolute",
+    bottom: 92,
+    left: 20,
+    right: 20,
+    backgroundColor: "#1B2733",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  undoText: { flex: 1, color: "#fff", fontSize: 14, fontWeight: "600" },
+  undoBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: "transparent" },
+  undoBtnText: { color: "#7FE0F2", fontWeight: "800", letterSpacing: 0.6, fontSize: 13 },
   sep: { height: 1, backgroundColor: colors.border, marginLeft: 50 },
   ghostPill: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 8, backgroundColor: "#FFF4E5", borderWidth: 1, borderColor: "#FFE0B2" },
   ghostPillText: { fontSize: 11 },

@@ -101,6 +101,9 @@ class ComposeMailReq(BaseModel):
     in_reply_to: Optional[str] = None
     thread_id: Optional[str] = None
     include_signature: bool = True
+    # Deferred / scheduled send
+    defer_seconds: int = 0           # 0 = send immediately; otherwise queue and send after N seconds (Undo window)
+    send_at: Optional[str] = None    # ISO-8601 — overrides defer_seconds for true "send later"
 
 
 class DraftReq(BaseModel):
