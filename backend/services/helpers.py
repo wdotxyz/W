@@ -144,13 +144,7 @@ def _strip_html(s: str) -> str:
 
 
 def _text_to_plain(text: str, from_addr: str = '') -> str:
-    body = (text or '').rstrip()
-    footer = (
-        '\n\n'
-        '—\n'
-        'Sent via W — your AI-native messaging & mail (https://w.xyz).'
-    )
-    return body + footer
+    return (text or '').rstrip()
 
 
 def _text_to_html(text: str, sender_name: str = '') -> str:
@@ -170,11 +164,7 @@ def _text_to_html(text: str, sender_name: str = '') -> str:
         'font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#06152B;font-size:15px;line-height:1.55">'
         '<div style="max-width:600px;margin:0 auto;background:#fff;padding:28px;border-radius:10px">'
         f'{escaped}'
-        '<p style="margin-top:28px;padding-top:14px;border-top:1px solid #E2E8F0;'
-        'font-size:12px;color:#5B7083">'
-        'Sent via <a href="https://w.xyz" style="color:#0A7A90">W</a> — '
-        'your AI-native messaging &amp; mail.'
-        '</p></div></body></html>'
+        '</div></body></html>'
     )
 
 
