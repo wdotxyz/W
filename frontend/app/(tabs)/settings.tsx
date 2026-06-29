@@ -15,10 +15,10 @@ export default function SettingsScreen() {
   const [referOpen, setReferOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const REFER_URL = "https://wplatforms.xyz";
+  const REFER_URL = "https://joinw.xyz";
   const referMessage =
     `${user?.name || "I"} is using W — an AI-native webmail & messaging app.\n\n` +
-    `Threaded inbox, Ghost Mail, voice-to-email, smart replies, and more.\n\n` +
+    `Custom domains, ghost mail, AI agents, and more.\n\n` +
     `Try it at ${REFER_URL}`;
 
   const onSignOut = async () => {
