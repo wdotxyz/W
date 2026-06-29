@@ -61,6 +61,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const me = await api<User>("/auth/me");
           setUser(me);
           connectWS();
+          // Best-effort: ensure this device has a published E2EE key
+          import("./crypto").then((m) => m.ensureKeyPublished().catch(() => {}));
         } catch {
           await setToken(null);
         }
@@ -77,12 +79,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await setToken(null);
     setUser(null);
     if (wsRef.current) wsRef.current.close();
+    import("./crypto").then((m) => m.clearKeyPair().catch(() => {}));
   };
 
   const applySession = async (token: string, u: User) => {
     await setToken(token);
     setUser(u);
     connectWS();
+    import("./crypto").then((m) => m.ensureKeyPublished().catch(() => {}));
   };
 
   const subscribe = (fn: Listener) => {

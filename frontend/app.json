@@ -70,7 +70,8 @@
           "microphonePermission": "Record voice notes to send in chats"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
