@@ -81,7 +81,7 @@ export default function ContactsScreen() {
       }
       Alert.alert(
         "Invite sent",
-        `We emailed ${addr} an invite from your @w.xyz handle. A copy is in your Sent folder.`,
+        `We emailed ${addr} an invite from your @w.xyz address. A copy is in your Sent folder.`,
       );
       setQ("");
     } catch (e: any) {
@@ -129,7 +129,7 @@ export default function ContactsScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.inviteTitle}>Invite {q.trim().toLowerCase()}</Text>
-            <Text style={styles.inviteSub}>We'll email them a sign-up link from your @w.xyz handle.</Text>
+            <Text style={styles.inviteSub}>We'll email them a sign-up link from your @w.xyz address.</Text>
           </View>
           <Ionicons name="arrow-forward" size={18} color={colors.accent} />
         </TouchableOpacity>

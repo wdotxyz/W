@@ -103,15 +103,13 @@ async def invite_to_chat(req: InviteToChatReq, user=Depends(get_current_user)):
     inviter_name = user.get('name') or user.get('email_address') or 'A friend'
     inviter_handle = user.get('email_address') or ''
     if not inviter_handle:
-        raise HTTPException(400, 'Claim your @w.xyz handle first.')
+        raise HTTPException(400, 'Claim your @w.xyz address first.')
 
     signup_url = f'https://joinw.xyz/signup?invited_by={inviter_handle}'
     subject = f'{inviter_name} invited you to chat on W'
     body_plain = (
-        f"Hi there,\n\n"
-        f"{inviter_name} wants to chat with you on W — an AI-native webmail "
-        f"& messaging app.\n\n"
-        f"Create your free @w.xyz handle here:\n{signup_url}\n\n"
+        f"{inviter_name} wants to chat with you on W.\n\n"
+        f"Create your free @w.xyz address: {signup_url}\n\n"
         f"If you weren't expecting this invite, just ignore it."
     )
 

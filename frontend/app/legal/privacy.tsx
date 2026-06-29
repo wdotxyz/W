@@ -12,7 +12,7 @@ export default function Privacy() {
         {
           heading: "Information We Collect",
           body: [
-            "Account info: phone number, name, profile photo, and the @w.xyz handle you choose.",
+            "Account info: phone number, name, profile photo, and the @w.xyz address you choose.",
             "Messages & email: chats, voice notes, photos and emails you send are stored so we can deliver them. We do not read or sell your messages.",
             "Device & log data: app version, OS, crash reports and basic usage events used to keep the service reliable.",
           ],

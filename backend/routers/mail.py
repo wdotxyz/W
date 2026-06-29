@@ -360,7 +360,7 @@ async def mail_search(q: str, user=Depends(get_current_user)):
 @router.post('/mail/drafts')
 async def save_draft(req: DraftReq, user=Depends(get_current_user)):
     if not user.get('email_address'):
-        raise HTTPException(400, 'Set up your @w.xyz handle first.')
+        raise HTTPException(400, 'Set up your @w.xyz address first.')
     now = now_iso()
     if req.id:
         existing = await db.emails.find_one({'id': req.id, 'owner_id': user['id'], 'folder': 'drafts'}, {'_id': 0})
@@ -644,7 +644,7 @@ async def _send_record_now(record: dict, user: dict) -> dict:
 @router.post('/mail/compose')
 async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if not user.get('email_address'):
-        raise HTTPException(400, 'Set up your @w.xyz handle first.')
+        raise HTTPException(400, 'Set up your @w.xyz address first.')
     if not req.to or not req.subject and not req.body:
         raise HTTPException(400, 'Recipient and subject/body required.')
 

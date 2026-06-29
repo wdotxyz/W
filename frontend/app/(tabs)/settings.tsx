@@ -64,7 +64,7 @@ export default function SettingsScreen() {
           <Avatar uri={user?.avatar} name={user?.name} size={68} />
           <View style={{ marginLeft: 14, flex: 1 }}>
             <Text style={styles.name}>{user?.name || "—"}</Text>
-            <Text style={styles.handle} numberOfLines={1} testID="profile-handle">{user?.email_address || "Set up your handle"}</Text>
+            <Text style={styles.handle} numberOfLines={1} testID="profile-handle">{user?.email_address || "Set up your address"}</Text>
             <Text style={styles.about} numberOfLines={1}>{user?.about}</Text>
           </View>
           <TouchableOpacity onPress={() => router.push("/(auth)/profile-setup")} style={styles.editBtn} testID="edit-profile-btn">

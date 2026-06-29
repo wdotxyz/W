@@ -35,7 +35,7 @@ async def billing_plans():
              'perks': [
                  'Everything in Essentials',
                  '50 GB storage',
-                 '5-Character @w.xyz handles available (Optional)',
+                 '5-Character @w.xyz addresses available (Optional)',
                  'Verified blue check',
                  'AI Assistant',
                  'Priority Support',
@@ -47,7 +47,7 @@ async def billing_plans():
              'perks': [
                  'Everything in Plus',
                  '100 GB storage',
-                 '4 & 5-Character @w.xyz handles available (Optional)',
+                 '4 & 5-Character @w.xyz addresses available (Optional)',
              ]},
         ],
     }
