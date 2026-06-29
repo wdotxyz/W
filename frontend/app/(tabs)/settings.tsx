@@ -64,7 +64,7 @@ export default function SettingsScreen() {
           <Avatar uri={user?.avatar} name={user?.name} size={68} />
           <View style={{ marginLeft: 14, flex: 1 }}>
             <Text style={styles.name}>{user?.name || "—"}</Text>
-            <Text style={styles.phone}>{user?.phone}</Text>
+            <Text style={styles.handle} numberOfLines={1} testID="profile-handle">{user?.email_address || "Set up your handle"}</Text>
             <Text style={styles.about} numberOfLines={1}>{user?.about}</Text>
           </View>
           <TouchableOpacity onPress={() => router.push("/(auth)/profile-setup")} style={styles.editBtn} testID="edit-profile-btn">
@@ -138,6 +138,7 @@ const styles = StyleSheet.create({
   profileCard: { flexDirection: "row", alignItems: "center", marginHorizontal: space.xl, padding: 16, backgroundColor: colors.surface2, borderRadius: radius.xl },
   name: { fontSize: 18, fontWeight: "800", color: colors.text },
   phone: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  handle: { fontSize: 13, color: colors.accent, marginTop: 2, fontWeight: "700" },
   about: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
   editBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#E8F5F7", alignItems: "center", justifyContent: "center" },
   group: { marginTop: space.xl, marginHorizontal: space.xl, backgroundColor: colors.surface2, borderRadius: radius.xl, overflow: "hidden" },
