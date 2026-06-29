@@ -24,6 +24,9 @@ from services.helpers import (
 )
 from services.sendgrid_mail import send_system_email
 from services.ai_assist import ai_classify_email, ai_compose_reply
+from services.crypto import (
+    decrypt_mail_list, decrypt_mail_record, encrypt_mail_record,
+)
 
 router = APIRouter()
 
@@ -180,7 +183,7 @@ async def mail_inbox(user=Depends(get_current_user)):
             {'snoozed_until': {'$lte': now_s}},
         ],
     }
-    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
@@ -191,7 +194,7 @@ async def mail_starred(user=Depends(get_current_user)):
     fb = (user.get('fallback_address') or '').lower()
     addrs = [a for a in [addr, fb] if a]
     q = {'starred': True, '$or': [{'owner_id': user['id']}, {'to_addrs': {'$in': addrs or [None]}}]}
-    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
@@ -204,7 +207,7 @@ async def mail_spam(user=Depends(get_current_user)):
     if not addrs:
         return []
     q = {'to_addrs': {'$in': addrs}, 'folder': 'spam'}
-    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
@@ -251,7 +254,7 @@ async def mail_promotions(user=Depends(get_current_user)):
     if not addrs:
         return []
     q = {'to_addrs': {'$in': addrs}, 'folder': 'promotions'}
-    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
@@ -299,7 +302,7 @@ async def mail_archived(user=Depends(get_current_user)):
     if not addrs:
         return []
     q = {'to_addrs': {'$in': addrs}, 'archived': True}
-    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
@@ -312,19 +315,19 @@ async def mail_snoozed(user=Depends(get_current_user)):
         return []
     now_s = now_iso()
     q = {'to_addrs': {'$in': addrs}, 'snoozed_until': {'$gt': now_s}}
-    msgs = await db.emails.find(q, {'_id': 0}).sort('snoozed_until', 1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('snoozed_until', 1).to_list(500))
     return msgs
 
 
 @router.get('/mail/sent')
 async def mail_sent(user=Depends(get_current_user)):
-    msgs = await db.emails.find({'owner_id': user['id'], 'folder': 'sent'}, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find({'owner_id': user['id'], 'folder': 'sent'}, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
 @router.get('/mail/drafts')
 async def mail_drafts(user=Depends(get_current_user)):
-    msgs = await db.emails.find({'owner_id': user['id'], 'folder': 'drafts'}, {'_id': 0}).sort('created_at', -1).to_list(500)
+    msgs = decrypt_mail_list(await db.emails.find({'owner_id': user['id'], 'folder': 'drafts'}, {'_id': 0}).sort('created_at', -1).to_list(500))
     return msgs
 
 
@@ -350,7 +353,7 @@ async def mail_search(q: str, user=Depends(get_current_user)):
             ]},
         ]
     }
-    msgs = await db.emails.find(query, {'_id': 0}).sort('created_at', -1).to_list(200)
+    msgs = decrypt_mail_list(await db.emails.find(query, {'_id': 0}).sort('created_at', -1).to_list(200))
     return msgs
 
 
@@ -370,9 +373,9 @@ async def save_draft(req: DraftReq, user=Depends(get_current_user)):
             'attachments': req.attachments or [],
             'updated_at': now,
         }
-        await db.emails.update_one({'id': req.id}, {'$set': update})
+        await db.emails.update_one({'id': req.id}, {'$set': encrypt_mail_record(dict(update))})
         fresh = await db.emails.find_one({'id': req.id}, {'_id': 0})
-        return fresh
+        return decrypt_mail_record(fresh)
     record = {
         'id': str(uuid.uuid4()),
         'owner_id': user['id'],
@@ -388,7 +391,7 @@ async def save_draft(req: DraftReq, user=Depends(get_current_user)):
         'updated_at': now,
         'delivery_status': 'draft',
     }
-    await db.emails.insert_one(dict(record))
+    await db.emails.insert_one(encrypt_mail_record(dict(record)))
     return record
 
 
@@ -413,7 +416,7 @@ async def get_thread(thread_id: str, user=Depends(get_current_user)):
     """Return every email in a thread the user can see + mark them as read/opened."""
     addrs = _addrs_for(user)
     q = {'thread_id': thread_id, '$or': [{'owner_id': user['id']}, {'to_addrs': {'$in': addrs or [None]}}]}
-    items = await db.emails.find(q, {'_id': 0}).sort('created_at', 1).to_list(500)
+    items = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', 1).to_list(500))
     if not items:
         raise HTTPException(404, 'Thread not found')
     # Mark unread inbound emails as read AND record opened_at if not already.
@@ -485,7 +488,7 @@ async def close_thread(thread_id: str, user=Depends(get_current_user)):
             ]},
         ],
     }
-    victims = await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(500)
+    victims = decrypt_mail_list(await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(500))
     if not victims:
         return {'deleted': 0, 'ghost_mail': True}
     ids = [v['id'] for v in victims]
@@ -570,7 +573,7 @@ async def mail_detail(mail_id: str, user=Depends(get_current_user)):
     if not m.get('read') and m.get('folder') == 'inbox' and addr in [a.lower() for a in (m.get('to_addrs') or [])]:
         await db.emails.update_one({'id': mail_id}, {'$set': {'read': True}})
         m['read'] = True
-    return m
+    return decrypt_mail_record(m)
 
 
 @router.patch('/mail/{mail_id}/read')
@@ -618,6 +621,9 @@ def _build_sendgrid_message(record: dict, user: dict, attachments: list):
 
 async def _send_record_now(record: dict, user: dict) -> dict:
     """Actually transmit a queued/scheduled email via SendGrid. Mutates and returns the record."""
+    # Records loaded from MongoDB are encrypted; ones built fresh in compose
+    # are still plaintext. decrypt_mail_record is idempotent for both.
+    decrypt_mail_record(record)
     if not SENDGRID_API_KEY:
         record['delivery_status'] = 'saved_no_provider'
         record['delivery_error'] = 'SendGrid API key not configured yet; email saved to Sent folder only.'
@@ -694,7 +700,7 @@ async def mail_compose(req: ComposeMailReq, user=Depends(get_current_user)):
     if not scheduled_at:
         await _send_record_now(record, user)
 
-    await db.emails.insert_one(dict(record))
+    await db.emails.insert_one(encrypt_mail_record(dict(record)))
     if req.draft_id:
         await db.emails.delete_one({'id': req.draft_id, 'owner_id': user['id'], 'folder': 'drafts'})
     return record
@@ -837,7 +843,7 @@ async def mail_inbound(request: Request):
             'in_reply_to': in_reply_to,
             'thread_id': thread_id,
         }
-        await db.emails.insert_one(dict(rec))
+        await db.emails.insert_one(encrypt_mail_record(dict(rec)))
         stored += 1
         await ws_manager.send_to_user(owner['id'], {'type': 'new_email', 'email': rec})
         # Async triage: header heuristics → user allowlist → Claude. Fire-and-forget

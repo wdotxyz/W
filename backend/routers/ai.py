@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.db import db
+from services.crypto import decrypt_mail_list, decrypt_mail_record
 from core.security import get_current_user, now_iso
 from services.ai_assist import (
     ai_spam_check, compose_email, extract_actions, rewrite_text,
@@ -105,7 +106,7 @@ async def ai_summarize_thread(thread_id: str, user=Depends(get_current_user)):
     addrs = [a for a in [addr, fb] if a]
     q = {'thread_id': thread_id,
          '$or': [{'owner_id': user['id']}, {'to_addrs': {'$in': addrs or [None]}}]}
-    msgs = await db.emails.find(q, {'_id': 0}).sort('created_at', 1).to_list(50)
+    msgs = decrypt_mail_list(await db.emails.find(q, {'_id': 0}).sort('created_at', 1).to_list(50))
     if not msgs:
         raise HTTPException(404, 'Thread not found')
     out = await summarize_thread(msgs)
@@ -147,11 +148,11 @@ async def ai_actions(user=Depends(get_current_user)):
     if not addrs:
         return {'actions': []}
     # Pull most recent inbox + starred — 25 emails max, then group by thread
-    emails = await db.emails.find(
+    emails = decrypt_mail_list(await db.emails.find(
         {'to_addrs': {'$in': addrs}, 'folder': 'inbox',
          'archived': {'$ne': True}, '$or': [{'snoozed_until': {'$exists': False}}, {'snoozed_until': None}]},
         {'_id': 0},
-    ).sort('created_at', -1).to_list(25)
+    ).sort('created_at', -1).to_list(25))
     threads: dict = {}
     for m in emails:
         tid = m.get('thread_id') or m.get('id')
@@ -175,10 +176,10 @@ async def scan_inbox_for_spam(user=Depends(get_current_user)):
     addrs = await _user_addrs(user)
     if not addrs:
         return {'scanned': 0, 'moved': 0, 'results': []}
-    msgs = await db.emails.find(
+    msgs = decrypt_mail_list(await db.emails.find(
         {'to_addrs': {'$in': addrs}, 'folder': 'inbox', 'archived': {'$ne': True}, 'starred': {'$ne': True}},
         {'_id': 0, 'id': 1, 'from_addr': 1, 'from_name': 1, 'subject': 1, 'body': 1},
-    ).sort('created_at', -1).to_list(25)
+    ).sort('created_at', -1).to_list(25))
 
     if not msgs:
         return {'scanned': 0, 'moved': 0, 'results': []}
@@ -204,10 +205,10 @@ async def verify_spam_folder(user=Depends(get_current_user)):
     addrs = await _user_addrs(user)
     if not addrs:
         return {'scanned': 0, 'released': 0, 'results': []}
-    msgs = await db.emails.find(
+    msgs = decrypt_mail_list(await db.emails.find(
         {'to_addrs': {'$in': addrs}, 'folder': 'spam'},
         {'_id': 0, 'id': 1, 'from_addr': 1, 'from_name': 1, 'subject': 1, 'body': 1},
-    ).sort('created_at', -1).to_list(25)
+    ).sort('created_at', -1).to_list(25))
     if not msgs:
         return {'scanned': 0, 'released': 0, 'results': []}
 
