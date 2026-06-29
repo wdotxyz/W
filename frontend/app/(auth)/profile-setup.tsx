@@ -107,7 +107,7 @@ export default function ProfileSetup() {
           <View style={styles.inputBox}>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Peter Williams"
+              placeholder="e.g. Your name"
               placeholderTextColor={colors.textMuted}
               value={name}
               onChangeText={setName}
