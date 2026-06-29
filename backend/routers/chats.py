@@ -96,42 +96,75 @@ async def invite_to_chat(req: InviteToChatReq, user=Depends(get_current_user)):
             chat = await _serialize_chat(new_chat, user['id'])
         return {'status': 'chat_ready', 'invited': False, 'chat': chat}
 
-    # Recipient isn't a W user yet → email them an invite
+    # Recipient isn't a W user yet → send them an invite via the inviter's own
+    # mailbox so it shows up in Sent, gets the at-rest encryption, and arrives
+    # FROM the inviter's @w.xyz handle (W's "many features, one app" principle).
     invited_at = now_iso()
+    inviter_name = user.get('name') or user.get('email_address') or 'A friend'
+    inviter_handle = user.get('email_address') or ''
+    if not inviter_handle:
+        raise HTTPException(400, 'Claim your @w.xyz handle first.')
+
+    signup_url = f'https://joinw.xyz/signup?invited_by={inviter_handle}'
+    subject = f'{inviter_name} invited you to chat on W'
+    body_plain = (
+        f"Hi there,\n\n"
+        f"{inviter_name} wants to chat with you on W — an AI-native webmail "
+        f"& messaging app.\n\n"
+        f"Create your free @w.xyz handle here:\n{signup_url}\n\n"
+        f"If you weren't expecting this invite, just ignore it."
+    )
+
+    # Build a real outgoing mail record (encrypted at rest, appears in Sent)
+    from services.crypto import encrypt_mail_record
+    from services.helpers import _user_tier
+    from core.config import MAIL_DOMAIN
+    from routers.mail import _send_record_now
+
+    mail_id = str(uuid.uuid4())
+    message_id = f'<{mail_id}@{MAIL_DOMAIN}>'
+    record = {
+        'id': mail_id,
+        'owner_id': user['id'],
+        'folder': 'sent',
+        'from_addr': inviter_handle,
+        'from_name': user.get('name') or inviter_handle,
+        'from_tier': _user_tier(user),
+        'to_addrs': [addr],
+        'subject': subject,
+        'body': body_plain,
+        'body_html': '',
+        'attachments': [],
+        'read': True,
+        'created_at': invited_at,
+        'delivery_status': 'queued',
+        'delivery_error': None,
+        'message_id': message_id,
+        'in_reply_to': None,
+        'thread_id': message_id,
+        'is_invite': True,
+    }
+    # Send via SendGrid (mutates record.delivery_status); rec stays plaintext
+    await _send_record_now(record, user)
+    # Persist (encrypted)
+    await db.emails.insert_one(encrypt_mail_record(dict(record)))
+
+    # Record the invitation row for analytics / dedupe
     await db.invitations.insert_one({
         'id': str(uuid.uuid4()),
         'from_user_id': user['id'],
         'to_email': addr,
         'created_at': invited_at,
+        'mail_id': mail_id,
     })
 
-    inviter_name = user.get('name') or user.get('email_address') or 'A friend'
-    inviter_handle = user.get('email_address') or ''
-    signup_url = f'https://joinw.xyz/signup?invited_by={inviter_handle}'
-    subject = f'{inviter_name} invited you to chat on W'
-    html = (
-        f'<p>Hi there,</p>'
-        f'<p><strong>{inviter_name}</strong> wants to chat with you on '
-        f'<a href="https://joinw.xyz">W</a> — an AI-native webmail &amp; messaging app.</p>'
-        f'<p>Create your free <code>@w.xyz</code> handle here:</p>'
-        f'<p><a href="{signup_url}" style="display:inline-block;padding:12px 22px;background:#0A7A90;color:#fff;border-radius:10px;text-decoration:none;font-weight:700">Join W & chat back</a></p>'
-        f'<p style="color:#5B7083;font-size:12px;margin-top:24px">If you weren&apos;t expecting this invite, just ignore it.</p>'
-    )
-    text = (
-        f"{inviter_name} wants to chat with you on W.\n\n"
-        f"Create your free @w.xyz handle: {signup_url}\n\n"
-        f"If you weren't expecting this invite, just ignore it."
-    )
-    try:
-        sent = await send_system_email(addr, subject, html, text)
-    except Exception:
-        logger.exception('chat invite email failed')
-        sent = False
-    if not sent:
-        # Don't surface SendGrid hiccups as a hard error — the invitation row
-        # is recorded and the inviter can retry. Tell them what happened.
-        return {'status': 'invite_logged', 'invited': True, 'email': addr, 'delivery': 'queued'}
-    return {'status': 'invited', 'invited': True, 'email': addr, 'delivery': 'sent'}
+    return {
+        'status': 'invited' if record.get('delivery_status') == 'sent' else 'invite_logged',
+        'invited': True,
+        'email': addr,
+        'delivery': record.get('delivery_status') or 'queued',
+        'mail_id': mail_id,
+    }
 
 
 @router.get('/chats')

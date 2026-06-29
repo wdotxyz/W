@@ -236,8 +236,8 @@ export default function MailScreen() {
               <Text style={styles.title}>Inbox</Text>
               <Text style={styles.addr} testID="my-email-addr">{user.email_address}</Text>
             </View>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/chats")} testID="open-chat-btn">
-              <Ionicons name="chatbubbles" size={20} color={colors.primary} />
+            <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/contacts")} testID="open-contacts-btn">
+              <Ionicons name="people" size={20} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} onPress={() => setSearchActive(true)} testID="mail-search-btn">
               <Ionicons name="search" size={20} color={colors.primary} />
