@@ -215,6 +215,8 @@ async def send_message(chat_id: str, req: SendMessageReq, user=Depends(get_curre
         raise HTTPException(404, 'Chat not found')
     if req.type in ('image', 'voice', 'file') and req.content:
         await _check_and_bump_storage(user, _approx_b64_bytes(req.content))
+    # When the client sent encrypted payload, don't store plaintext.
+    encrypted = bool(req.ciphertext and req.nonce)
     msg = {
         'id': str(uuid.uuid4()),
         'chat_id': chat_id,
@@ -222,7 +224,12 @@ async def send_message(chat_id: str, req: SendMessageReq, user=Depends(get_curre
         'sender_name': user.get('name') or user.get('phone'),
         'sender_tier': _user_tier(user),
         'type': req.type,
-        'content': req.content,
+        # For E2EE messages, the server MUST NOT see the plaintext body.
+        'content': '' if encrypted else (req.content or ''),
+        'ciphertext': req.ciphertext if encrypted else None,
+        'nonce': req.nonce if encrypted else None,
+        'algo': req.algo if encrypted else None,
+        'e2ee': encrypted,
         'duration': req.duration,
         'read_by': [user['id']],
         'created_at': now_iso(),
@@ -234,7 +241,8 @@ async def send_message(chat_id: str, req: SendMessageReq, user=Depends(get_curre
         {'type': 'new_message', 'chat_id': chat_id, 'message': msg},
     )
 
-    if AI_USER_ID in chat['member_ids'] and user['id'] != AI_USER_ID and req.type == 'text':
+    # AI assistant only replies to plaintext (it can't read ciphertext)
+    if AI_USER_ID in chat['member_ids'] and user['id'] != AI_USER_ID and req.type == 'text' and not encrypted:
         asyncio.create_task(_handle_ai_reply(chat_id, chat['member_ids'], req.content))
 
     return msg

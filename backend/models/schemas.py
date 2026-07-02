@@ -85,6 +85,11 @@ class SendMessageReq(BaseModel):
     type: str = 'text'
     content: str
     duration: Optional[int] = None
+    # E2EE (nacl.box) — when provided, `content` is expected to be ""
+    # and the client decrypts on the wire. Server never stores plaintext.
+    ciphertext: Optional[str] = None
+    nonce: Optional[str] = None
+    algo: Optional[str] = None
 
 
 class AiChatReq(BaseModel):

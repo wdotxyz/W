@@ -11,6 +11,7 @@ import { AudioModule, useAudioRecorder, useAudioPlayer, RecordingPresets } from 
 import * as FileSystem from "expo-file-system";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
+import { encryptForPeer, decryptFromPeer, getPeerPublicKey } from "../../src/crypto";
 import BlueCheck from "../../src/components/BlueCheck";
 import SmartReplyChips from "../../src/components/SmartReplyChips";
 import * as WebBrowser from "expo-web-browser";
@@ -36,6 +37,50 @@ export default function ChatScreen() {
   const recordTimer = useRef<any>(null);
 
   const isAi = chat?.member_ids?.includes(AI_USER_ID);
+  const peerId = chat?.member_ids?.find((mid: string) => mid !== user?.id && mid !== AI_USER_ID);
+  const [peerPub, setPeerPub] = useState<string | null>(null);
+  const [plain, setPlain] = useState<Record<string, string>>({});
+  const isE2EE = !!peerPub && !isAi && !chat?.is_group;
+
+  // Fetch the peer's public key once we know who we're talking to.
+  useEffect(() => {
+    if (!peerId || isAi) return;
+    let cancel = false;
+    getPeerPublicKey(peerId).then((pk) => { if (!cancel) setPeerPub(pk); });
+    return () => { cancel = true; };
+  }, [peerId, isAi]);
+
+  // Whenever new encrypted messages arrive, decrypt them client-side.
+  useEffect(() => {
+    if (!peerPub) return;
+    const need = messages.filter((m) => m.e2ee && m.ciphertext && m.nonce && !(m.id in plain));
+    if (!need.length) return;
+    let cancel = false;
+    (async () => {
+      const patch: Record<string, string> = {};
+      for (const m of need) {
+        try {
+          const p = await decryptFromPeer(m.ciphertext, m.nonce, peerPub);
+          patch[m.id] = p ?? "";
+        } catch { patch[m.id] = ""; }
+      }
+      if (!cancel) setPlain((prev) => ({ ...prev, ...patch }));
+    })();
+    return () => { cancel = true; };
+  }, [messages, peerPub, plain]);
+
+  // Helper: what to actually render for a message.
+  // For E2EE messages, prefer decrypted plaintext; fall back to a placeholder.
+  const displayText = (m: any) => {
+    if (m.e2ee) return plain[m.id] ?? "🔒 Decrypting…";
+    return m.content;
+  };
+  const displayContent = (m: any) => {
+    // Returns the effective "content" (URI/base64 or text) for a message,
+    // preferring the decrypted plaintext for E2EE messages.
+    if (m.e2ee) return plain[m.id] ?? "";
+    return m.content;
+  };
 
   const load = useCallback(async () => {
     try {
@@ -100,10 +145,17 @@ export default function ChatScreen() {
     setText("");
     setSending(true);
     try {
+      let payload: any = { chat_id: id, type: "text", content: t };
+      if (isE2EE && peerPub) {
+        const enc = await encryptForPeer(t, peerPub);
+        payload = { chat_id: id, type: "text", content: "", ...enc };
+      }
       const msg = await api<any>(`/chats/${id}/messages`, {
         method: "POST",
-        body: JSON.stringify({ chat_id: id, type: "text", content: t }),
+        body: JSON.stringify(payload),
       });
+      // Cache own plaintext so we don't show "🔒 Decrypting…" for our own bubble.
+      if (msg?.e2ee && msg?.id) setPlain((p) => ({ ...p, [msg.id]: t }));
       setMessages((prev) => prev.some((x) => x.id === msg.id) ? prev : [...prev, msg]);
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -122,10 +174,16 @@ export default function ChatScreen() {
     if (res.canceled || !res.assets[0].base64) return;
     const data = `data:image/jpeg;base64,${res.assets[0].base64}`;
     try {
+      let payload: any = { chat_id: id, type: "image", content: data };
+      if (isE2EE && peerPub) {
+        const enc = await encryptForPeer(data, peerPub);
+        payload = { chat_id: id, type: "image", content: "", ...enc };
+      }
       const msg = await api<any>(`/chats/${id}/messages`, {
         method: "POST",
-        body: JSON.stringify({ chat_id: id, type: "image", content: data }),
+        body: JSON.stringify(payload),
       });
+      if (msg?.e2ee && msg?.id) setPlain((p) => ({ ...p, [msg.id]: data }));
       setMessages((prev) => [...prev, msg]);
     } catch (e: any) { Alert.alert("Error", e.message); }
   };
@@ -156,10 +214,16 @@ export default function ChatScreen() {
     try {
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       const data = `data:audio/m4a;base64,${b64}`;
+      let payload: any = { chat_id: id, type: "voice", content: data, duration: dur };
+      if (isE2EE && peerPub) {
+        const enc = await encryptForPeer(data, peerPub);
+        payload = { chat_id: id, type: "voice", content: "", duration: dur, ...enc };
+      }
       const msg = await api<any>(`/chats/${id}/messages`, {
         method: "POST",
-        body: JSON.stringify({ chat_id: id, type: "voice", content: data, duration: dur }),
+        body: JSON.stringify(payload),
       });
+      if (msg?.e2ee && msg?.id) setPlain((p) => ({ ...p, [msg.id]: data }));
       setMessages((prev) => [...prev, msg]);
     } catch (e: any) { Alert.alert("Send failed", e.message); }
   };
@@ -178,9 +242,20 @@ export default function ChatScreen() {
               {isAi && <Text style={{ color: colors.accent }}>  · AI</Text>}
             </Text>
             <BlueCheck tier={chat?.display_tier} size={16} />
+            {isE2EE && (
+              <Ionicons name="lock-closed" size={12} color={colors.textMuted} style={{ marginLeft: 6 }} testID="e2ee-badge" />
+            )}
           </View>
           <Text style={styles.headerSub}>
-            {typingUser ? "typing…" : isAi ? "Always available" : chat?.is_group ? `${chat.member_ids?.length || 0} members` : "online"}
+            {typingUser
+              ? "typing…"
+              : isAi
+                ? "Always available"
+                : chat?.is_group
+                  ? `${chat.member_ids?.length || 0} members`
+                  : isE2EE
+                    ? "End-to-end encrypted"
+                    : "online"}
           </Text>
         </View>
         {!isAi && !chat?.is_group && (
@@ -201,7 +276,23 @@ export default function ChatScreen() {
             ref={flatRef}
             data={messages}
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <Bubble msg={item} mine={item.sender_id === user?.id} isGroup={chat?.is_group} />}
+            ListHeaderComponent={isE2EE ? (
+              <View style={styles.e2eeNotice} testID="e2ee-notice">
+                <Ionicons name="lock-closed" size={12} color={colors.textMuted} />
+                <Text style={styles.e2eeNoticeText}>
+                  Messages are end-to-end encrypted. Only you and {chat?.display_name || "this person"} can read them.
+                </Text>
+              </View>
+            ) : null}
+            renderItem={({ item }) => (
+              <Bubble
+                msg={item}
+                mine={item.sender_id === user?.id}
+                isGroup={chat?.is_group}
+                displayText={displayText(item)}
+                displayContent={displayContent(item)}
+              />
+            )}
             contentContainerStyle={{ padding: space.md, paddingBottom: 12 }}
             onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
           />
@@ -258,16 +349,35 @@ export default function ChatScreen() {
   );
 }
 
-const Bubble = ({ msg, mine, isGroup }: any) => {
+const Bubble = ({ msg, mine, isGroup, displayText, displayContent }: any) => {
   const sentStyle = mine ? styles.bubMine : styles.bubTheir;
+  const isE2EE = !!msg.e2ee;
+  const decrypting = isE2EE && !displayContent;
   return (
     <View style={[styles.bubRow, mine ? { justifyContent: "flex-end" } : { justifyContent: "flex-start" }]}>
       <View style={[styles.bubble, sentStyle]} testID={`msg-${msg.id}`}>
         {!mine && isGroup && <Text style={styles.bubName}>{msg.sender_name}</Text>}
-        {msg.type === "text" && <Text style={styles.bubText}>{msg.content}</Text>}
-        {msg.type === "image" && <Image source={{ uri: msg.content }} style={styles.bubImage} />}
-        {msg.type === "voice" && <VoicePlayer uri={msg.content} duration={msg.duration} mine={mine} />}
-        <Text style={styles.bubTime}>{new Date(msg.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text>
+        {msg.type === "text" && <Text style={styles.bubText}>{displayText}</Text>}
+        {msg.type === "image" && (decrypting ? (
+          <View style={[styles.bubImage, { alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2 }]}>
+            <Ionicons name="lock-closed" size={22} color={colors.textMuted} />
+            <Text style={{ marginTop: 6, color: colors.textMuted, fontSize: 12 }}>Decrypting…</Text>
+          </View>
+        ) : (
+          <Image source={{ uri: displayContent || msg.content }} style={styles.bubImage} />
+        ))}
+        {msg.type === "voice" && (decrypting ? (
+          <View style={[styles.voiceRow, { paddingVertical: 6 }]}>
+            <Ionicons name="lock-closed" size={22} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginLeft: 6 }}>Decrypting voice…</Text>
+          </View>
+        ) : (
+          <VoicePlayer uri={displayContent || msg.content} duration={msg.duration} mine={mine} />
+        ))}
+        <View style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 4, gap: 4 }}>
+          {isE2EE && <Ionicons name="lock-closed" size={10} color={colors.textMuted} />}
+          <Text style={styles.bubTime}>{new Date(msg.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text>
+        </View>
       </View>
     </View>
   );
@@ -326,4 +436,11 @@ const styles = StyleSheet.create({
   voiceWave: { flexDirection: "row", alignItems: "center", gap: 2, flex: 1 },
   voiceBar: { width: 2, borderRadius: 1 },
   voiceDur: { fontSize: 12, color: colors.textMuted, fontWeight: "600" },
+  e2eeNotice: {
+    flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "center",
+    backgroundColor: "rgba(255,244,199,0.9)",
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    marginBottom: 8, marginTop: 2, maxWidth: "88%",
+  },
+  e2eeNoticeText: { fontSize: 11, color: "#6b5a1b", flex: 1, textAlign: "center" },
 });

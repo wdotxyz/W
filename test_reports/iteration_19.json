@@ -1,0 +1,36 @@
+{
+  "summary": "E2EE (nacl.box) end-to-end verified. All 11 backend pytest cases pass and the mobile web preview flow was walked as Peter → TEST Alice E2EE 1:1 chat. Backend: POST /api/keys/publish is idempotent, GET /api/keys/peer/{id} returns 200/404 correctly, GET /api/keys/me returns the caller's key, and POST /api/chats/{id}/messages persists ciphertext+nonce with content='' and e2ee=true when ciphertext+nonce are supplied. A message body with ONLY ciphertext (missing nonce) correctly falls back to e2ee=false. Legacy plaintext still works (e2ee=false). AI chat replies never carry the e2ee flag (falsy). Frontend: on sign-in the crypto module publishes Peter's X25519 pub key (verified /keys/me matches localStorage w_e2ee_public_v1). Opening the Peter↔Alice chat renders the lock badge (testID e2ee-badge), 'End-to-end encrypted' subtitle, and the yellow banner (testID e2ee-notice) 'Messages are end-to-end encrypted. Only you and TEST Alice E2EE can read them.' Sending 'hello alice — encrypted hi' shows the sender bubble as plaintext instantly, while the server-side GET /messages response for the same message returns e2ee=true, content='', ciphertext+nonce present — confirming zero plaintext leakage.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_e2ee.py",
+    "/app/test_reports/pytest/e2ee_results.xml"
+  ],
+  "action_items": [
+    "Optional hardening: services/ai.py builds ai_msg without an explicit 'e2ee': False key — the field is simply absent. Frontend tolerates it (m.e2ee falsy), but for consistency with the messages schema consider setting e2ee=False on AI/error inserts (services/ai.py:37 and :57).",
+    "Consider deleting the seeded TEST_alice_e2ee@w.xyz user (id 85d835d7-6f3c-425a-bce6-3ffbb350367f) and chat 769fef71-a7df-477c-9f6e-569650d0cfc9 when the E2EE feature is signed off — they were left in place to make the flow visually reproducible."
+  ],
+  "critical_code_review_comments": [
+    "backend/routers/chats.py:219 correctly gates encrypted-storage on both ciphertext AND nonce being present (not just ciphertext) — good defensive check; verified in test_e2ee_flag_false_when_only_ciphertext_no_nonce.",
+    "backend/routers/chats.py:245 correctly excludes AI reply when the incoming user message is encrypted (`and not encrypted`) — AI cannot decrypt so it must not auto-reply on ciphertext. Verified by inspection; no test currently exercises 'user sends encrypted to an AI-in-group' since MVP scope excludes group+AI.",
+    "backend/routers/keys.py stores public keys in a dedicated user_keys collection with unique upsert on user_id — clean design.",
+    "frontend/src/crypto.ts uses AsyncStorage on web (only realistic option without WebCrypto persistence) — private keys DO live in browser localStorage on web. This is called out in the file docstring; acceptable for MVP but worth flagging to users."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_e2ee.py (new — 11 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 pytest)",
+    "frontend": "100% (E2EE badge, banner, sender plaintext bubble, no-plaintext-on-server all verified)"
+  },
+  "seed_data_creation": "Seeded TEST Alice E2EE user (email: test_alice_e2ee@w.xyz, id: 85d835d7-6f3c-425a-bce6-3ffbb350367f, password: AliceE2EE2026!) with a published X25519 public key, and a 1:1 chat with Peter (chat id 769fef71-a7df-477c-9f6e-569650d0cfc9). One encrypted message from Peter is stored in that chat. Safe to delete after review.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_e2ee.py is the regression suite. It logs Peter in, seeds an ephemeral 'test_alice_<hex>@w.xyz' user directly in Mongo (Twilio is live so OTP-based signup is unusable), publishes both keys, creates a 1:1 chat via POST /api/chats {member_ids:[alice_id]}, and asserts server never sees plaintext for E2EE messages. The alice fixture cleans up her user, key, chats, and messages after the module — but the separate persistent 'test_alice_e2ee@w.xyz' seed created by /tmp/seed_alice.py for the UI walkthrough is NOT auto-cleaned. If you rerun the frontend E2EE UI walk, sign in as peter@w.xyz and open the 'TEST Alice E2EE' chat directly; the lock badge, subtitle 'End-to-end encrypted', and testID e2ee-notice banner should all render.",
+  "rca_of_issue": "N/A — verification request, no bugs. Note that during initial test authoring the /auth/verify-otp path could not be used to bootstrap a second user because Twilio is configured in live mode (returns 400 for the fake +1555… numbers). Solution used: seed the user directly in Mongo with a bcrypt-hashed password and log in via /api/auth/login. Reusable helper added at test_e2ee.py::_create_ephemeral_user."
+}
