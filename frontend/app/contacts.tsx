@@ -97,6 +97,9 @@ export default function ContactsScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>Contacts</Text>
         <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={() => router.push("/chats")} style={styles.iconBtn} testID="contacts-open-chats">
+          <Ionicons name="chatbubbles" size={22} color={colors.primary} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push("/new-chat")} style={styles.iconBtn} testID="contacts-add">
           <Ionicons name="person-add" size={22} color={colors.primary} />
         </TouchableOpacity>
