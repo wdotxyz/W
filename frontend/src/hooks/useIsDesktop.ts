@@ -8,7 +8,7 @@
  */
 import { Platform, useWindowDimensions } from "react-native";
 
-export const DESKTOP_BREAKPOINT = 900;
+export const DESKTOP_BREAKPOINT = 720;
 
 export function useIsDesktop(): boolean {
   const { width } = useWindowDimensions();
