@@ -45,7 +45,7 @@ export default function SignInScreen() {
         return;
       }
       await applySession(res.token, res.user);
-      router.replace("/(tabs)/mail");
+      router.replace("/");
     } catch (e: any) {
       const msg = (e?.message || "").toLowerCase();
       if (msg.includes("locked") || msg.includes("429")) {

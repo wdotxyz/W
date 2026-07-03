@@ -46,7 +46,7 @@ export default function OtpScreen() {
       setUser(user);
       if (!user.name) router.replace("/(auth)/profile-setup");
       else if (user.custom_domain && !user.domain_verified) router.replace("/domain-setup");
-      else router.replace("/(tabs)/mail");
+      else router.replace("/");
     } catch (e: any) {
       Alert.alert("Invalid OTP", "Please check the code and try again.");
     } finally {

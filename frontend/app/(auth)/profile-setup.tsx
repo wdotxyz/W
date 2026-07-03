@@ -61,7 +61,7 @@ export default function ProfileSetup() {
         body: JSON.stringify({ name: name.trim(), avatar, about: about.trim() || undefined }),
       });
       setUser(updated);
-      router.replace("/(tabs)/mail");
+      router.replace("/");
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to save");
     } finally {
