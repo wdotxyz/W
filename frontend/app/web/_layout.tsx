@@ -33,7 +33,7 @@ const FOLDERS: Folder[] = [
 ];
 
 const SECONDARY = [
-  { label: "Chats",    icon: "chatbubbles" as const, route: "/web/chats" },
+  { label: "Chat",     icon: "chatbubbles" as const, route: "/web/chats" },
   { label: "Contacts", icon: "people"      as const, route: "/web/contacts" },
   { label: "Watch",    icon: "play-circle" as const, route: "/web/watch" },
   { label: "Settings", icon: "settings"    as const, route: "/web/settings" },
@@ -87,13 +87,30 @@ function WebLayoutInner() {
         </View>
 
         <View style={styles.topRight}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => router.push("/web/settings")}
-            testID="web-topbar-settings"
-          >
-            <Ionicons name="settings-outline" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
+          {SECONDARY.map((s) => {
+            const active =
+              (s.route === "/web/chats"    && pathname.startsWith("/web/chat")) ||
+              (s.route === "/web/contacts" && pathname.startsWith("/web/contacts")) ||
+              (s.route === "/web/watch"    && pathname.startsWith("/web/watch")) ||
+              (s.route === "/web/settings" && pathname.startsWith("/web/settings"));
+            return (
+              <TouchableOpacity
+                key={s.label}
+                onPress={() => router.push(s.route as any)}
+                style={[styles.topIconBtn, active && styles.topIconBtnActive]}
+                testID={`web-topbar-${s.label.toLowerCase()}`}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={s.icon}
+                  size={19}
+                  color={active ? colors.primary : colors.textMuted}
+                />
+                <Text style={[styles.topIconLabel, active && styles.topIconLabelActive]}>{s.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+
           <TouchableOpacity
             style={styles.avatarBtn}
             onPress={() => router.push("/web/settings")}
@@ -136,28 +153,6 @@ function WebLayoutInner() {
                     color={isActive ? colors.primary : colors.textMuted}
                   />
                   <Text style={[styles.sideLabel, isActive && styles.sideLabelActive]}>{f.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-
-            <View style={styles.divider} />
-
-            {SECONDARY.map((s) => {
-              const active =
-                (s.route === "/web/chats"    && pathname.startsWith("/web/chat")) ||
-                (s.route === "/web/contacts" && pathname.startsWith("/web/contacts")) ||
-                (s.route === "/web/watch"    && pathname.startsWith("/web/watch")) ||
-                (s.route === "/web/settings" && pathname.startsWith("/web/settings"));
-              return (
-                <TouchableOpacity
-                  key={s.label}
-                  onPress={() => router.push(s.route as any)}
-                  style={[styles.sideRow, active && styles.sideRowActive]}
-                  testID={`web-sidebar-${s.label.toLowerCase()}`}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name={s.icon} size={18} color={active ? colors.primary : colors.textMuted} />
-                  <Text style={[styles.sideLabel, active && styles.sideLabelActive]}>{s.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -212,9 +207,21 @@ const styles = StyleSheet.create({
   topRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     marginLeft: "auto",
   },
+  topIconBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+  },
+  topIconBtnActive: { backgroundColor: "#D6F0F4" },
+  topIconLabel: { fontSize: 13, color: colors.textMuted, fontWeight: "600" },
+  topIconLabelActive: { color: colors.primary, fontWeight: "700" },
   iconBtn: {
     width: 40, height: 40, borderRadius: 20,
     alignItems: "center", justifyContent: "center",
@@ -223,7 +230,7 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.primaryLight,
     alignItems: "center", justifyContent: "center",
-    marginLeft: 4,
+    marginLeft: 8,
   },
   avatarLetter: { color: "#fff", fontWeight: "800", fontSize: 14 },
   body: {
