@@ -11,6 +11,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from "
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radius } from "../../src/theme";
 import { useAuth } from "../../src/auth";
+import BrandMark from "../../src/components/BrandMark";
 
 type Folder = {
   key: string;
@@ -65,8 +66,7 @@ export default function WebLayout() {
       {/* TOP BAR ------------------------------------------------------------ */}
       <View style={styles.topBar}>
         <View style={styles.brand}>
-          <View style={styles.brandDot}><Text style={styles.brandLetter}>W</Text></View>
-          <Text style={styles.brandName}>W Mail</Text>
+          <BrandMark size={36} testID="web-brand-logo" />
         </View>
 
         <View style={styles.searchWrap}>
@@ -185,13 +185,6 @@ const styles = StyleSheet.create({
     gap: 10,
     width: SIDEBAR_WIDTH - 16,
   },
-  brandDot: {
-    width: 32, height: 32, borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: "center", justifyContent: "center",
-  },
-  brandLetter: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  brandName: { fontSize: 18, fontWeight: "700", color: colors.text, letterSpacing: -0.3 },
   searchWrap: {
     flex: 1,
     maxWidth: 720,

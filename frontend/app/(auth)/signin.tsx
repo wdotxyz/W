@@ -66,15 +66,18 @@ export default function SignInScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Brand header */}
-          <View style={styles.brandWrap}>
-            <Image
-              source={require("../../assets/images/brand-logo.png")}
-              style={styles.brandLogo}
-              resizeMode="contain"
-            />
-            <Text style={styles.tag}>Webmail, Reimagined.</Text>
-          </View>
+          {/* Content column \u2014 capped for readability on desktop web,
+              full-width on phones. */}
+          <View style={styles.contentCol}>
+            {/* Brand header */}
+            <View style={styles.brandWrap}>
+              <Image
+                source={require("../../assets/images/brand-logo.png")}
+                style={styles.brandLogo}
+                resizeMode="contain"
+              />
+              <Text style={styles.tag}>Webmail, Reimagined.</Text>
+            </View>
 
           {/* Sign-in form */}
           <View style={styles.formCard}>
@@ -143,10 +146,10 @@ export default function SignInScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={{ height: 28 }} />
+            <View style={{ height: 28 }} />
 
-          {/* Create account — always reachable via scroll */}
-          <View style={styles.bottomWrap}>
+            {/* Create account — always reachable via scroll */}
+            <View style={styles.bottomWrap}>
             <View style={styles.divider}>
               <View style={styles.line} />
               <Text style={styles.dividerText}>New to W?</Text>
@@ -169,6 +172,7 @@ export default function SignInScreen() {
               .
             </Text>
           </View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -178,7 +182,9 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
   flex: { flex: 1 },
-  scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 24, flexGrow: 1, minHeight: "100%" as any },
+  scroll: { paddingHorizontal: space.xl, paddingTop: space.xl, paddingBottom: 24, flexGrow: 1, minHeight: "100%" as any, alignItems: "center" as any },
+
+  contentCol: { width: "100%", maxWidth: 420, alignSelf: "center" },
 
   brandWrap: { alignItems: "center", marginTop: 12, marginBottom: 20 },
   brandLogo: { width: 48, height: 48, marginBottom: 10 },
