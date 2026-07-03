@@ -19,10 +19,11 @@ import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator,
   ScrollView, Platform,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../src/api";
 import { colors, radius } from "../../src/theme";
+import { useWebCompose } from "../../src/webCompose";
 
 type Mail = {
   id: string;
@@ -63,7 +64,7 @@ const FOLDER_TITLES: Record<string, string> = {
 };
 
 export default function WebInbox() {
-  const router = useRouter();
+  const { openCompose } = useWebCompose();
   const params = useLocalSearchParams<{ folder?: string; open?: string }>();
   const folder = (params.folder as string) || "inbox";
   const openId = (params.open as string) || null;
@@ -123,13 +124,10 @@ export default function WebInbox() {
 
   const onReply = () => {
     if (!selected) return;
-    router.push({
-      pathname: "/web/compose",
-      params: {
-        to: selected.from_addr || "",
-        subject: selected.subject?.toLowerCase().startsWith("re:") ? selected.subject : `Re: ${selected.subject || ""}`,
-        inReplyTo: selected.thread_id || "",
-      },
+    openCompose({
+      to: selected.from_addr || "",
+      subject: selected.subject?.toLowerCase().startsWith("re:") ? selected.subject : `Re: ${selected.subject || ""}`,
+      inReplyTo: selected.thread_id || "",
     });
   };
 

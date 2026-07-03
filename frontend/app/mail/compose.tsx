@@ -229,16 +229,27 @@ export default function Compose() {
           subject: subject.trim() || "(no subject)",
         }));
       } catch {}
-      router.back();
+      closeCompose();
     } catch (e: any) { Alert.alert("Couldn't send", e.message); }
     finally { setSending(false); }
+  };
+
+  // Close the compose screen — go back if we have history; otherwise fall
+  // back to the platform-appropriate inbox so users never get stuck.
+  const closeCompose = () => {
+    if (router.canGoBack && router.canGoBack()) { router.back(); return; }
+    if (Platform.OS === "web" && typeof window !== "undefined" && window.innerWidth >= 720) {
+      router.replace("/web/inbox" as any);
+    } else {
+      router.replace("/(tabs)/mail" as any);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="compose-back">
+          <TouchableOpacity onPress={closeCompose} style={styles.iconBtn} testID="compose-back">
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

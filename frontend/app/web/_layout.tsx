@@ -12,6 +12,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, radius } from "../../src/theme";
 import { useAuth } from "../../src/auth";
 import BrandMark from "../../src/components/BrandMark";
+import { WebComposeProvider, useWebCompose } from "../../src/webCompose";
+import WebComposePanel from "./_ComposePanel";
 
 type Folder = {
   key: string;
@@ -38,9 +40,19 @@ const SECONDARY = [
 ];
 
 export default function WebLayout() {
+  return (
+    <WebComposeProvider>
+      <WebLayoutInner />
+      <WebComposePanel />
+    </WebComposeProvider>
+  );
+}
+
+function WebLayoutInner() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname() || "";
+  const { openCompose: openComposeCtx } = useWebCompose();
 
   // Any unauthenticated user shouldn't hit /web — bounce them to sign-in.
   useEffect(() => {
@@ -59,7 +71,7 @@ export default function WebLayout() {
 
   const isInboxRoute = pathname.startsWith("/web/inbox") || pathname === "/web";
 
-  const openCompose = () => router.push("/web/compose");
+  const openCompose = () => openComposeCtx();
 
   return (
     <View style={styles.root} testID="web-shell">
