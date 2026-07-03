@@ -63,7 +63,7 @@ export default function UpdatesScreen() {
       ) : (
         <ScrollView
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accent} />}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: 40, maxWidth: 720, width: "100%", alignSelf: "center" }}
         >
           {/* My status */}
           <Text style={styles.section}>STATUS</Text>
@@ -258,8 +258,8 @@ const styles = StyleSheet.create({
   composeTitle: { flex: 1, color: "#fff", fontSize: 18, fontWeight: "700" },
   postBtn: { backgroundColor: "#fff", paddingHorizontal: 18, paddingVertical: 10, borderRadius: radius.pill },
   postBtnText: { color: colors.primary, fontWeight: "800" },
-  composeBody: { flex: 1, padding: space.xl, justifyContent: "center" },
-  composeInput: { color: "#fff", fontSize: 28, lineHeight: 36, fontWeight: "600", textAlign: "center" },
+  composeBody: { flex: 1, padding: space.xl, justifyContent: "center", alignItems: "center" },
+  composeInput: { color: "#fff", fontSize: 28, lineHeight: 36, fontWeight: "600", textAlign: "center", width: "100%", maxWidth: 640, minHeight: 60 },
   colorRow: { paddingHorizontal: space.xl, gap: 10, paddingVertical: 16 },
   colorDot: { width: 36, height: 36, borderRadius: 18 },
   colorDotOn: { borderWidth: 3, borderColor: "#fff" },

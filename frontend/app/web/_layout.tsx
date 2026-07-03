@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     gap: 16,
   },
   brand: {
