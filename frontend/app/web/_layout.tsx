@@ -33,10 +33,10 @@ const FOLDERS: Folder[] = [
 ];
 
 const SECONDARY = [
+  { label: "Inbox",    icon: "mail"        as const, route: "/web/inbox" },
   { label: "Chat",     icon: "chatbubbles" as const, route: "/web/chats" },
   { label: "Contacts", icon: "people"      as const, route: "/web/contacts" },
   { label: "Watch",    icon: "play-circle" as const, route: "/web/watch" },
-  { label: "Settings", icon: "settings"    as const, route: "/web/settings" },
 ];
 
 export default function WebLayout() {
@@ -125,7 +125,8 @@ function WebLayoutInner() {
 
       {/* BODY: SIDEBAR + CONTENT ------------------------------------------- */}
       <View style={styles.body}>
-        <View style={styles.sidebar} testID="web-sidebar">
+        {isInboxRoute && (
+          <View style={styles.sidebar} testID="web-sidebar">
           <TouchableOpacity
             style={styles.composeBtn}
             onPress={openCompose}
@@ -158,6 +159,7 @@ function WebLayoutInner() {
             })}
           </ScrollView>
         </View>
+        )}
 
         <View style={styles.content}>
           <Stack screenOptions={{ headerShown: false, animation: "none" }} />
