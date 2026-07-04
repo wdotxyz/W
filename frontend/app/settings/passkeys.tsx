@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radius, space } from "../../src/theme";
+import { smartBack } from "../../src/utils/nav";
 
 export default function PasskeysScreen() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function PasskeysScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="passkeys-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="passkeys-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Passkeys</Text>

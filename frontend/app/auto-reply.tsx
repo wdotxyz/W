@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { colors, radius, space } from "../src/theme";
 import { SHOW_PREMIUM } from "../src/featureFlags";
+import { smartBack } from "../src/utils/nav";
 
 type AutoReply = {
   enabled: boolean;
@@ -68,7 +69,7 @@ export default function AutoReplyScreen() {
           ? (aiEnabled ? "W AI will reply to incoming mail for you." : "We'll reply to incoming mail for you.")
           : "Auto-replies are now disabled."
       );
-      router.back();
+      smartBack(router);
     } catch (e: any) { Alert.alert("Couldn't save", e.message); }
     finally { setSaving(false); }
   };
@@ -96,7 +97,7 @@ export default function AutoReplyScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="auto-reply-back">
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="auto-reply-back">
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Auto-reply</Text>

@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 export default function SignatureScreen() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function SignatureScreen() {
         body: JSON.stringify({ signature: sig }),
       });
       if (user) setUser({ ...user, signature: res.signature } as any);
-      router.back();
+      smartBack(router);
     } finally { setSaving(false); }
   };
 
@@ -29,7 +30,7 @@ export default function SignatureScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="sig-back">
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="sig-back">
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Email signature</Text>

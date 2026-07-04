@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 const VERSION = "1.0";
 
@@ -21,7 +22,7 @@ export default function AboutScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="about-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="about-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>About W</Text>

@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { Avatar } from "./chats";
 import { colors, space, radius } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 
@@ -81,7 +82,7 @@ export default function NewChat() {
             ? `We emailed ${addr} an invite with a sign-up link. They can chat with you once they join W.`
             : `Invite saved for ${addr}. We'll email them shortly.`,
         );
-        router.back();
+        smartBack(router);
         return;
       }
       Alert.alert("Hmm", "Unexpected response — please try again.");
@@ -97,7 +98,7 @@ export default function NewChat() {
         style={{ flex: 1 }}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="newchat-close">
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="newchat-close">
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.title}>New chat</Text>

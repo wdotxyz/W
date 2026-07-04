@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { Avatar } from "./chats";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 
@@ -92,7 +93,7 @@ export default function ContactsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="contacts-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="contacts-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Contacts</Text>

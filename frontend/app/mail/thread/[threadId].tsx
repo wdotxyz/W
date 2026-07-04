@@ -11,6 +11,7 @@ import { api } from "../../../src/api";
 import BlueCheck from "../../../src/components/BlueCheck";
 import SmartReplyChips from "../../../src/components/SmartReplyChips";
 import { colors, radius, space } from "../../../src/theme";
+import { smartBack } from "../../../src/utils/nav";
 
 type Mail = any;
 
@@ -33,7 +34,7 @@ export default function ThreadView() {
       setMessages(res.messages || []);
       setStarred(!!res.is_starred);
       setGhostMail(!!res.ghost_mail_enabled);
-    } catch (e: any) { Alert.alert("Couldn't open thread", e.message); router.back(); }
+    } catch (e: any) { Alert.alert("Couldn't open thread", e.message); smartBack(router); }
     finally { setLoading(false); }
   }, [threadId, router]);
 
@@ -131,7 +132,7 @@ export default function ThreadView() {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}><Ionicons name="chevron-back" size={26} color={colors.text} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn}><Ionicons name="chevron-back" size={26} color={colors.text} /></TouchableOpacity>
         </View>
         <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
       </SafeAreaView>
@@ -142,7 +143,7 @@ export default function ThreadView() {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}><Ionicons name="chevron-back" size={26} color={colors.text} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn}><Ionicons name="chevron-back" size={26} color={colors.text} /></TouchableOpacity>
         </View>
         <Text style={styles.empty}>Conversation no longer available.</Text>
       </SafeAreaView>
@@ -155,7 +156,7 @@ export default function ThreadView() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="thread-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="thread-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{subject}</Text>

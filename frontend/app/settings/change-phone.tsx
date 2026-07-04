@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
+import { smartBack } from "../../src/utils/nav";
 
 export default function ChangePhoneScreen() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function ChangePhoneScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="change-phone-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="change-phone-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Change phone number</Text>

@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
 import { SHOW_GHOST_MAIL_TOGGLE } from "../../src/featureFlags";
+import { smartBack } from "../../src/utils/nav";
 
 export default function MailSettingsScreen() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function MailSettingsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="mail-settings-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="mail-settings-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Mail Settings</Text>

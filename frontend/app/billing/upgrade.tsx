@@ -11,6 +11,7 @@ import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, radius, space } from "../../src/theme";
 import { SHOW_PREMIUM } from "../../src/featureFlags";
+import { smartBack } from "../../src/utils/nav";
 
 type Plan = {
   tier: "free" | "plus" | "pro";
@@ -26,7 +27,7 @@ function PremiumComingSoon() {
   return (
     <SafeAreaView style={comingSoonStyles.safe} edges={["top", "bottom"]}>
       <View style={comingSoonStyles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={comingSoonStyles.iconBtn} testID="premium-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={comingSoonStyles.iconBtn} testID="premium-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={comingSoonStyles.title}>W Premium</Text>
@@ -38,7 +39,7 @@ function PremiumComingSoon() {
         <Text style={comingSoonStyles.heroSub}>
           We&apos;re polishing the experience before opening up paid plans. Stay tuned — everything you love about W is fully free during the MVP.
         </Text>
-        <TouchableOpacity onPress={() => router.back()} style={comingSoonStyles.cta} activeOpacity={0.85}>
+        <TouchableOpacity onPress={() => smartBack(router)} style={comingSoonStyles.cta} activeOpacity={0.85}>
           <Text style={comingSoonStyles.ctaText}>Got it</Text>
         </TouchableOpacity>
       </View>
@@ -141,7 +142,7 @@ function UpgradeScreenInner() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.back} testID="upgrade-back-btn">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.back} testID="upgrade-back-btn">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>W Premium</Text>

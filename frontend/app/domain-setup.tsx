@@ -9,6 +9,7 @@ import * as Clipboard from "expo-clipboard";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 type DnsRecord = {
   type: string;
@@ -62,7 +63,7 @@ export default function DomainSetupScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.back} testID="domain-back-btn">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.back} testID="domain-back-btn">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Connect your domain</Text>

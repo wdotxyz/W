@@ -9,6 +9,7 @@ import * as FileSystem from "expo-file-system";
 import { api } from "../../src/api";
 import BlueCheck from "../../src/components/BlueCheck";
 import { colors, radius, space } from "../../src/theme";
+import { smartBack } from "../../src/utils/nav";
 
 export default function MailDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -54,7 +55,7 @@ export default function MailDetail() {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="chevron-back" size={26} color={colors.text} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.backBtn}><Ionicons name="chevron-back" size={26} color={colors.text} /></TouchableOpacity>
         </View>
         <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
       </SafeAreaView>
@@ -64,7 +65,7 @@ export default function MailDetail() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} testID="mail-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.backBtn} testID="mail-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <TouchableOpacity onPress={onReply} style={styles.replyBtn} testID="mail-reply">

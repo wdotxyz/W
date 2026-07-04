@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../src/api";
 import { colors, radius, space } from "../../src/theme";
+import { smartBack } from "../../src/utils/nav";
 
 type Strength = { score: number; label: string; color: string };
 
@@ -52,7 +53,7 @@ export default function ChangePasswordScreen() {
       Alert.alert(
         "Password updated",
         "Your password has been changed. Use the new password the next time you sign in.",
-        [{ text: "Done", onPress: () => router.back() }],
+        [{ text: "Done", onPress: () => smartBack(router) }],
       );
       setCurrent("");
       setNext("");
@@ -72,7 +73,7 @@ export default function ChangePasswordScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="cp-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="cp-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Change password</Text>

@@ -23,6 +23,17 @@ export default function AccountSettingsScreen() {
 
   const close = () => { if (!busy) { setStep("closed"); setConfirmText(""); } };
 
+  // Robust back — falls back to the settings root if there's no history
+  // (e.g. deep-linked into /settings/account on the web).
+  const goBack = () => {
+    if (router.canGoBack && router.canGoBack()) { router.back(); return; }
+    if (Platform.OS === "web" && typeof window !== "undefined" && window.innerWidth >= 720) {
+      router.replace("/web/settings" as any);
+    } else {
+      router.replace("/(tabs)/settings" as any);
+    }
+  };
+
   const onDeactivate = async () => {
     setBusy(true);
     try {
@@ -61,7 +72,7 @@ export default function AccountSettingsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="account-back">
+        <TouchableOpacity onPress={goBack} style={styles.iconBtn} testID="account-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Account</Text>

@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 type Settings = {
   message_sounds: boolean;
@@ -53,7 +54,7 @@ export default function NotificationSettings() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} testID="notif-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.backBtn} testID="notif-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>

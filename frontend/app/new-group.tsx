@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { Avatar } from "./chats";
 import { colors, space, radius } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 export default function NewGroup() {
   const router = useRouter();
@@ -41,7 +42,7 @@ export default function NewGroup() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="newgroup-close">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="newgroup-close">
           <Ionicons name="close" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>New group</Text>

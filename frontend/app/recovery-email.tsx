@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 type Step = "view" | "enter" | "verify";
 
@@ -52,7 +53,7 @@ export default function RecoveryEmailScreen() {
       });
       if (user) setUser({ ...user, recovery_email: res.recovery_email, recovery_email_verified: true } as any);
       Alert.alert("Recovery email verified ✓", `${res.recovery_email} can now be used to reset your password.`);
-      router.back();
+      smartBack(router);
     } catch (e: any) { Alert.alert("Couldn't verify", e.message); }
     finally { setBusy(false); }
   };
@@ -88,7 +89,7 @@ export default function RecoveryEmailScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="recovery-back">
+          <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="recovery-back">
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Recovery email</Text>

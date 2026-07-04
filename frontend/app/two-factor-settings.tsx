@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../src/auth";
 import { api } from "../src/api";
 import { colors, radius, space } from "../src/theme";
+import { smartBack } from "../src/utils/nav";
 
 type Step = "idle" | "password" | "otp";
 
@@ -82,7 +83,7 @@ export default function TwoFactorSettingsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.back} testID="tfa-settings-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.back} testID="tfa-settings-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Two-step verification</Text>

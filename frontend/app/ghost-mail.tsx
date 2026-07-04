@@ -9,6 +9,7 @@ import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, radius, space } from "../src/theme";
 import { SHOW_PREMIUM } from "../src/featureFlags";
+import { smartBack } from "../src/utils/nav";
 
 type GhostMail = { enabled: boolean; can_disable: boolean; tier: string };
 
@@ -59,7 +60,7 @@ export default function GhostMailScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="ghost-back">
+        <TouchableOpacity onPress={() => smartBack(router)} style={styles.iconBtn} testID="ghost-back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Ghost Mail</Text>
