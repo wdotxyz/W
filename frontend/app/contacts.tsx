@@ -163,7 +163,7 @@ export default function ContactsScreen() {
             <Text style={styles.empty}>
               {query
                 ? (isEmail(q.trim()) ? "Not in your contacts — tap above to invite them." : "No matches. Type a full email to invite someone.")
-                : "No contacts yet. Tap the + icon above or type an email to invite a friend."}
+                : "No contacts yet. Type an email above to invite a friend."}
             </Text>
           }
         />
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: "700", color: colors.text },
   handle: { fontSize: 13, color: colors.accent, fontWeight: "600", marginTop: 2 },
   about: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  empty: { textAlign: "center", color: colors.textMuted, marginTop: 60, paddingHorizontal: 40, lineHeight: 20 },
+  empty: { textAlign: "left", color: colors.textMuted, marginTop: 20, marginHorizontal: space.md, lineHeight: 20 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   sheet: { backgroundColor: colors.surface, padding: 18, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 24 },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginBottom: 14 },
