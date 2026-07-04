@@ -184,8 +184,8 @@ export default function WebInbox() {
           )}
         </View>
 
-        <View style={[styles.readerCol, !selected && styles.readerColEmpty]}>
-          {selected ? (
+        {selected && (
+          <View style={styles.readerCol}>
             <MailReader
               mail={selected}
               loading={readerLoading}
@@ -194,13 +194,8 @@ export default function WebInbox() {
               onStar={onStar}
               onClose={() => setSelected(null)}
             />
-          ) : (
-            <View style={styles.emptyReader}>
-              <Ionicons name="mail-open-outline" size={48} color={colors.border} />
-              <Text style={styles.emptyReaderText}>Select a conversation to read</Text>
-            </View>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     </View>
   );

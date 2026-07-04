@@ -36,7 +36,6 @@ const SECONDARY = [
   { label: "Inbox",    icon: "mail"        as const, route: "/web/inbox" },
   { label: "Chat",     icon: "chatbubbles" as const, route: "/web/chats" },
   { label: "Contacts", icon: "people"      as const, route: "/web/contacts" },
-  { label: "Watch",    icon: "play-circle" as const, route: "/web/watch" },
 ];
 
 export default function WebLayout() {
