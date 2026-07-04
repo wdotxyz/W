@@ -221,6 +221,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: radius.xl, backgroundColor: colors.surface2,
     borderWidth: 1, borderColor: colors.border,
+    maxWidth: 640, width: "100%",
   },
   searchInput: { flex: 1, fontSize: 15, color: colors.text },
   invite: {

@@ -63,7 +63,7 @@ export default function UpdatesScreen() {
       ) : (
         <ScrollView
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accent} />}
-          contentContainerStyle={{ paddingBottom: 40, maxWidth: 720, width: "100%", alignSelf: "center" }}
+          contentContainerStyle={{ paddingBottom: 40, maxWidth: 720, width: "100%" }}
         >
           {/* My status */}
           <Text style={styles.section}>STATUS</Text>
