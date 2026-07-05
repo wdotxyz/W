@@ -104,7 +104,55 @@ async def on_startup():
     # Start the scheduled-send sweeper
     import asyncio
     asyncio.create_task(_scheduled_send_loop())
+    # Start the Ghost Mail sweeper — deletes emails older than 24h unless saved
+    asyncio.create_task(_ghost_mail_sweep_loop())
     logger.info('W backend started.')
+
+
+async def _ghost_mail_sweep_loop() -> None:
+    """Background sweeper: every 5 minutes, delete any email older than 24
+    hours that the user has NOT explicitly saved (starred). Applies to both
+    incoming and outgoing mail. Archived and snoozed emails are exempt.
+
+    This is the new "Ghost Mail" behaviour: mail vanishes automatically after
+    24h unless the user hits Save.
+    """
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+    while True:
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            now_s = datetime.now(timezone.utc).isoformat()
+            # Find eligible victims: created > 24h ago, not saved, not archived, not currently snoozed
+            q = {
+                'created_at': {'$lte': cutoff},
+                'starred': {'$ne': True},
+                'archived': {'$ne': True},
+                '$or': [
+                    {'snoozed_until': {'$exists': False}},
+                    {'snoozed_until': None},
+                    {'snoozed_until': {'$lte': now_s}},
+                ],
+            }
+            victims = await db.emails.find(q, {'_id': 0, 'id': 1, 'owner_id': 1}).to_list(1000)
+            if victims:
+                ids = [v['id'] for v in victims]
+                await db.emails.delete_many({'id': {'$in': ids}})
+                # Group by owner so we can notify each user's open sessions.
+                from collections import defaultdict
+                by_owner = defaultdict(list)
+                for v in victims:
+                    if v.get('owner_id'):
+                        by_owner[v['owner_id']].append(v['id'])
+                for owner_id, del_ids in by_owner.items():
+                    try:
+                        await ws_manager.send_to_user(owner_id, {'type': 'mail_deleted', 'ids': del_ids, 'reason': 'ghost_mail_24h'})
+                    except Exception:
+                        pass
+                logger.info(f'Ghost Mail sweep: deleted {len(ids)} emails older than 24h')
+        except Exception as e:
+            logger.warning(f'ghost-mail sweep failed: {type(e).__name__}: {str(e)[:120]}')
+        await asyncio.sleep(300)  # 5 minutes
 
 
 async def _scheduled_send_loop() -> None:

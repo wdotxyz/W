@@ -464,41 +464,10 @@ async def unstar_thread(thread_id: str, user=Depends(get_current_user)):
 
 @router.post('/mail/thread/{thread_id}/close')
 async def close_thread(thread_id: str, user=Depends(get_current_user)):
-    """Called when the user navigates away. Ghost-deletes every unstarred,
-    unarchived, non-snoozed email in the thread that the user owns — covering
-    both incoming (inbox, opened) and outgoing (sent) messages."""
-    if not user.get('ghost_mail_enabled', True):
-        return {'deleted': 0, 'ghost_mail': False}
-    now_s = now_iso()
-    q = {
-        'thread_id': thread_id,
-        'owner_id': user['id'],
-        'starred': {'$ne': True},
-        'archived': {'$ne': True},
-        '$and': [
-            {'$or': [
-                {'snoozed_until': {'$exists': False}},
-                {'snoozed_until': None},
-                {'snoozed_until': {'$lte': now_s}},
-            ]},
-            # Eligible folders: sent (auto-counts as opened) OR inbox that was actually opened.
-            {'$or': [
-                {'folder': 'sent'},
-                {'folder': 'inbox', 'opened_at': {'$exists': True, '$ne': None}},
-            ]},
-        ],
-    }
-    victims = decrypt_mail_list(await db.emails.find(q, {'_id': 0, 'id': 1}).to_list(500))
-    if not victims:
-        return {'deleted': 0, 'ghost_mail': True}
-    ids = [v['id'] for v in victims]
-    await db.emails.delete_many({'id': {'$in': ids}})
-    # Notify via WebSocket so other open sessions refresh
-    try:
-        await ws_manager.send_to_user(user['id'], {'type': 'mail_deleted', 'ids': ids, 'thread_id': thread_id})
-    except Exception:
-        pass
-    return {'deleted': len(ids), 'ghost_mail': True, 'ids': ids}
+    """Left in place for API compatibility. As of the 24-hour Ghost Mail
+    model, closing a thread no longer immediately deletes anything —
+    unsaved mail auto-expires after 24h via the background sweeper."""
+    return {'deleted': 0, 'ghost_mail': True, 'mode': 'time_based_24h'}
 
 
 # -------------------- Per-message actions --------------------

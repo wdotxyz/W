@@ -69,9 +69,9 @@ export default function GhostMailScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.emojiBig}>👻</Text>
-        <Text style={styles.hero}>Read it. Lose it.</Text>
+        <Text style={styles.hero}>24 hours. Then poof.</Text>
         <Text style={styles.heroSub}>
-          By default, opened emails vanish forever when you close them. Tap <Text style={{ fontWeight: "800" }}>Save</Text> on a thread to keep it in your 1 GB Starred vault.
+          Every email — sent or received — auto-deletes 24 hours after it arrives. Tap <Text style={{ fontWeight: "800" }}>Save</Text> on any email to keep it in your 1 GB vault forever.
         </Text>
 
         <View style={styles.toggleRow} testID="ghost-toggle-row">
@@ -79,7 +79,7 @@ export default function GhostMailScreen() {
             <Text style={styles.toggleLabel}>Ghost Mail enabled</Text>
             <Text style={styles.toggleHint}>
               {state.enabled
-                ? "Opened threads vanish on close — unless you Save them."
+                ? "Unsaved emails vanish 24 hours after they arrive."
                 : "Every email stays in your inbox forever (Premium)."}
             </Text>
           </View>
